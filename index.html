@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Blockyard — Visual Site Builder</title>
+  <link rel="stylesheet" href="editor.css">
+</head>
+<body>
+  <header id="topbar">
+    <div class="brand"><span class="logo-mark">◆</span> Blockyard</div>
+    <div class="tb-group">
+      <label class="tb-label" for="page-select">Page</label>
+      <select id="page-select" class="tb-select"></select>
+    </div>
+    <div class="tb-group seg" id="bp-group">
+      <button data-bp="desktop" title="Desktop (base styles)">🖥 Desktop</button>
+      <button data-bp="tablet" title="Tablet — max-width 991px">▯ Tablet</button>
+      <button data-bp="mobile" title="Mobile — max-width 479px">▮ Mobile</button>
+    </div>
+    <div class="tb-group">
+      <button id="btn-undo" class="tb-btn" title="Undo (Ctrl+Z)">↶</button>
+      <button id="btn-redo" class="tb-btn" title="Redo (Ctrl+Shift+Z)">↷</button>
+    </div>
+    <div class="spacer"></div>
+    <span id="save-state" class="muted small">Saved</span>
+    <div class="menu-wrap">
+      <button id="btn-menu" class="tb-btn" title="Project">Project ▾</button>
+      <div id="menu" class="menu" hidden>
+        <button data-act="new">New blank site</button>
+        <button data-act="template">Load starter template</button>
+        <hr>
+        <button data-act="save-json">Download project (.json)</button>
+        <button data-act="load-json">Open project (.json)…</button>
+        <hr>
+        <button data-act="cleanup">Remove unused classes</button>
+        <button data-act="shortcuts">Keyboard shortcuts</button>
+      </div>
+    </div>
+    <button id="btn-preview" class="tb-btn">▶ Preview</button>
+    <button id="btn-export" class="tb-btn primary">Export</button>
+  </header>
+
+  <main id="workspace">
+    <aside id="left" class="panel">
+      <nav class="tabs" id="left-tabs">
+        <button data-tab="add" class="on">Add</button>
+        <button data-tab="navigator">Navigator</button>
+        <button data-tab="pages">Pages</button>
+      </nav>
+      <div class="panel-body" id="tab-add"></div>
+      <div class="panel-body" id="tab-navigator" hidden><div id="nav-tree"></div></div>
+      <div class="panel-body" id="tab-pages" hidden>
+        <div id="pages-list"></div>
+        <button id="btn-add-page" class="wide-btn">+ Add page</button>
+      </div>
+    </aside>
+
+    <section id="stage">
+      <div id="canvas-scroll">
+        <div id="canvas-wrap"><iframe id="canvas" title="Canvas"></iframe></div>
+      </div>
+      <div id="crumbs"></div>
+    </section>
+
+    <aside id="right" class="panel">
+      <nav class="tabs" id="right-tabs">
+        <button data-tab="style" class="on">Style</button>
+        <button data-tab="settings">Settings</button>
+      </nav>
+      <div class="panel-body" id="right-body"></div>
+    </aside>
+  </main>
+
+  <div id="modal-root"></div>
+  <div id="toast" hidden></div>
+  <datalist id="class-list"></datalist>
+  <datalist id="link-list"></datalist>
+  <datalist id="shadow-list">
+    <option value="none"></option>
+    <option value="0 1px 3px rgba(0,0,0,.12)"></option>
+    <option value="0 10px 30px rgba(0,0,0,.12)"></option>
+    <option value="0 25px 60px rgba(0,0,0,.2)"></option>
+  </datalist>
+  <input type="file" id="file-json" accept=".json,application/json" hidden>
+  <input type="file" id="file-image" accept="image/*" hidden>
+
+  <script src="app.js"></script>
+</body>
+</html>
