@@ -1,12 +1,15 @@
-import { ArrowDown, ArrowUp, Box, Copy, CornerLeftUp, Database, Group, Trash2, Unlink } from 'lucide-react';
+import { useState } from 'react';
+import { ArrowDown, ArrowUp, Box, CodeXml, Copy, CornerLeftUp, Database, Group, Sparkles, Trash2, Unlink } from 'lucide-react';
+import { api } from '../api';
+import { CodeField } from '../CodeEditor';
 import { ELEMENTS } from '../constants';
 import { bindingCollection, currentPage, currentRoot, findNode, nodeLabel, sanitizeSlug } from '../model';
-import { openModal, useStore } from '../store';
+import { openModal, toast, useStore, useTarget } from '../store';
 import {
-  createComponent, deleteSelected, detachInstance, duplicateSelected, editComponent, moveSelected, select, updateNode, updatePage, wrapSelected,
+  createComponent, deleteSelected, detachInstance, duplicateSelected, editComponent, moveSelected, select, setPageCode, updateNode, updatePage, wrapSelected,
 } from '../actions';
 import { pickImage } from '../files';
-import { CommitInput, Section, Select } from '../ui';
+import { CommitInput, Menu, Section, Select } from '../ui';
 import type { Binding, FieldType, Node } from '../types';
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
@@ -30,11 +33,42 @@ function AttrInput({ node, label, k, ph, list, transform }: { node: Node; label:
   return <Row label={label}><CommitInput value={node.attrs?.[k]} placeholder={ph} list={list} onCommit={(v) => setAttr(k, transform ? transform(v) : v)} /></Row>;
 }
 
+const REWRITES = ['Improve the writing', 'Make it shorter', 'Make it longer', 'Make it more persuasive', 'Make it friendlier', 'Fix spelling and grammar', 'Translate to Spanish'];
+
+function RewriteWithClaude({ node }: { node: Node }) {
+  const target = useTarget();
+  const [busy, setBusy] = useState(false);
+  if (target.kind !== 'remote') return null;
+  const run = async (instruction: string) => {
+    setBusy(true);
+    try {
+      const { text } = await api<{ text: string }>(`/ai/${target.projectId}/text`, { body: { text: node.text, instruction, element: `${ELEMENTS[node.type]?.label || node.type} <${node.tag}>` } });
+      updateNode((n) => { n.text = text; });
+    } catch (e) { toast((e as Error).message); } finally { setBusy(false); }
+  };
+  return (
+    <Row label="">
+      <Menu className="grow" trigger={() => (
+        <button className="btn ai-btn" disabled={busy || !target.hasAiKey} title={target.hasAiKey ? '' : 'Connect Claude in Workspace settings'}>
+          <Sparkles size={12} /> {busy ? 'Rewriting…' : 'Rewrite with Claude'}
+        </button>
+      )}>
+        {(close) => (<>
+          {REWRITES.map((r) => <button key={r} onClick={() => { close(); run(r); }}>{r}</button>)}
+          <hr />
+          <button onClick={() => { close(); const r = prompt('How should Claude change this text?'); if (r) run(r); }}>Custom instruction…</button>
+        </>)}
+      </Menu>
+    </Row>
+  );
+}
+
 function PageSettings() {
   const page = useStore((s) => currentPage(s.project, s.ui));
   const collection = useStore((s) => s.project.collections.find((c) => c.id === page.collectionId));
   const set = (k: 'name' | 'slug' | 'title' | 'description') => (v: string) => updatePage(page.id, { [k]: v });
   return (
+    <>
     <Section title="Page settings" open>
       <Row label="Name"><CommitInput value={page.name} onCommit={set('name')} /></Row>
       {!collection && <Row label="Slug"><CommitInput value={page.slug} onCommit={set('slug')} disabled={page.slug === 'index'} /></Row>}
@@ -45,6 +79,12 @@ function PageSettings() {
       <Row label="SEO title"><CommitInput value={page.title} placeholder="Shown in the browser tab" onCommit={set('title')} /></Row>
       <Row label="Description"><CommitInput multiline value={page.description} placeholder="Meta description for search engines" onCommit={set('description')} /></Row>
     </Section>
+    <Section title="Page custom code" open>
+      <CodeField label="Inside <head> tag" kind="head" value={page.customCode?.head || ''} onSave={(head) => setPageCode(page.id, { head })} />
+      <CodeField label="Before </body> tag" kind="body" value={page.customCode?.body || ''} onSave={(body) => setPageCode(page.id, { body })} />
+      <div className="muted small hint">Runs on this page only, after the site's custom code. <button className="link-btn" onClick={() => openModal('site')}>Site custom code</button></div>
+    </Section>
+    </>
   );
 }
 
@@ -130,9 +170,10 @@ export function SettingsPanel({ node }: { node: Node }) {
       ) : (
         <Section title="Element" open>
           {def.tags && <Row label="Tag"><Select value={node.tag} options={def.tags} onChange={(v) => updateNode((n) => { n.tag = v; })} /></Row>}
-          {node.text != null && !node.bind?.text && (
+          {node.text != null && !node.bind?.text && <>
             <Row label="Text"><CommitInput multiline value={node.text} onCommit={(v) => updateNode((n) => { n.text = v; })} /></Row>
-          )}
+            <RewriteWithClaude node={node} />
+          </>}
           <AttrInput node={node} label="ID" k="id" ph="for #anchor links" transform={sanitizeSlug} />
         </Section>
       )}
@@ -187,9 +228,10 @@ export function SettingsPanel({ node }: { node: Node }) {
         </Section>
       )}
       {node.type === 'embed' && (
-        <Section title="Custom code" open>
-          <CommitInput multiline rows={8} className="code" value={node.html} onCommit={(v) => updateNode((n) => { n.html = v; })} />
-          <div className="muted small hint">Scripts run in Preview and the exported site, not on the canvas.</div>
+        <Section title="Code Embed" open>
+          <pre className="code-preview" onClick={() => openModal('embed', node.id)}>{node.html?.slice(0, 400) || 'Empty'}</pre>
+          <button className="btn primary" onClick={() => openModal('embed', node.id)}><CodeXml size={12} /> Open code editor</button>
+          <div className="muted small hint">Double-click the embed on the canvas to edit it. Scripts run in Preview and on the published site, not in the Designer.</div>
         </Section>
       )}
 

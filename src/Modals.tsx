@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Database, Download, ExternalLink, FileText, Monitor, Plus, Smartphone, Tablet, Trash2, X } from 'lucide-react';
+import { Database, Download, ExternalLink, FileText, Monitor, Plus, Smartphone, Sparkles, Tablet, Trash2, X } from 'lucide-react';
 import { BP_ORDER, BREAKPOINTS } from './constants';
 import { exportFiles, pageHTML, siteFiles } from './codegen';
-import { currentPage, itemPageFile, templatePageFor } from './model';
-import { closeModal, getState, toast, useModal, useStore } from './store';
+import { currentPage, currentRoot, findNode, itemPageFile, templatePageFor } from './model';
+import { CodeEditor, CodeField } from './CodeEditor';
+import { closeModal, getState, toast, useModal, useStore, useTarget } from './store';
+import { api } from './api';
 import {
-  addCollection, addField, addItem, deleteCollection, deleteItem, openTemplatePage, removeField, updateCollection, updateItem,
+  addCollection, addField, addItem, addItems, deleteCollection, deleteItem, openTemplatePage, removeField, setNodeHtml, setSiteCode, updateCollection, updateItem,
 } from './actions';
 import { download, makeZip } from './zip';
 import { pickImage } from './files';
@@ -156,6 +158,10 @@ function CmsModal() {
   const item = coll?.items.find((i) => i.id === itemId) || null;
   const [fieldName, setFieldName] = useState('');
   const [fieldType, setFieldType] = useState<FieldType>('plaintext');
+  const target = useTarget();
+  const [aiTopic, setAiTopic] = useState('');
+  const [aiCount, setAiCount] = useState(3);
+  const [aiBusy, setAiBusy] = useState(false);
 
   const create = () => {
     if (!newName.trim()) return;
@@ -199,6 +205,27 @@ function CmsModal() {
               <div className="cms-items">
                 <div className="cms-list">
                   <button className="btn primary" onClick={() => setItemId(addItem(coll.id))}><Plus size={12} /> New {coll.name.replace(/s$/, '')}</button>
+                  {target.kind === 'remote' && (
+                    <div className="cms-ai">
+                      <input className="f-input" placeholder={target.hasAiKey ? 'Topic, e.g. posts about web design' : 'Connect Claude to generate items'}
+                        disabled={!target.hasAiKey || aiBusy} value={aiTopic} onChange={(e) => setAiTopic(e.target.value)} />
+                      <div className="btn-row">
+                        <select className="f-input" value={aiCount} onChange={(e) => setAiCount(+e.target.value)} disabled={!target.hasAiKey || aiBusy}>
+                          {[1, 3, 5, 10].map((n) => <option key={n} value={n}>{n} item{n > 1 ? 's' : ''}</option>)}
+                        </select>
+                        <button className="btn" disabled={!target.hasAiKey || aiBusy} onClick={async () => {
+                          setAiBusy(true);
+                          try {
+                            const { items } = await api<{ items: Record<string, string>[] }>(`/ai/${target.projectId}/cms-items`, {
+                              body: { collectionName: coll.name, fields: coll.fields, count: aiCount, topic: aiTopic, existingSlugs: coll.items.map((i) => i.data.slug) },
+                            });
+                            addItems(coll.id, items);
+                            toast(`Claude added ${items.length} item${items.length > 1 ? 's' : ''}`);
+                          } catch (e) { toast((e as Error).message); } finally { setAiBusy(false); }
+                        }}><Sparkles size={12} /> {aiBusy ? 'Writing…' : 'Generate'}</button>
+                      </div>
+                    </div>
+                  )}
                   {coll.items.map((it) => (
                     <button key={it.id} className={'cms-item' + (it.id === itemId ? ' on' : '')} onClick={() => setItemId(it.id)}>
                       <span>{it.data.name || 'Untitled'}</span><span className="muted small">/{it.data.slug}</span>
@@ -270,8 +297,31 @@ function CmsModal() {
   );
 }
 
+function SiteSettingsModal() {
+  const code = useStore((s) => s.project.settings?.customCode) || { head: '', body: '' };
+  return (
+    <Modal title="Site settings">
+      <div className="form-stack">
+        <h4 className="sub-h">Custom code</h4>
+        <p className="muted">Added to every page of the published site. Use it for fonts, analytics, chat widgets or global scripts. Code runs in Preview and on the published site, not in the Designer.</p>
+        <CodeField label="Head code" kind="head" value={code.head} onSave={(head) => setSiteCode({ head })} />
+        <CodeField label="Footer code (before </body>)" kind="body" value={code.body} onSave={(body) => setSiteCode({ body })} />
+      </div>
+    </Modal>
+  );
+}
+
+function EmbedModal() {
+  const id = useModal((s) => s.arg);
+  const node = useStore((s) => (id ? findNode(currentRoot(s.project, s.ui), id)?.node : null));
+  if (!node) return null;
+  return <CodeEditor title="Code Embed" kind="embed" value={node.html || ''} onSave={(html) => setNodeHtml(node.id, html)} onClose={closeModal} />;
+}
+
 export function Modals() {
   const name = useModal((s) => s.name);
+  if (name === 'site') return <SiteSettingsModal />;
+  if (name === 'embed') return <EmbedModal />;
   if (name === 'export') return <ExportModal />;
   if (name === 'preview') return <PreviewModal />;
   if (name === 'shortcuts') return <ShortcutsModal />;

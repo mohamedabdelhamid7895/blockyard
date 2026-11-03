@@ -169,16 +169,19 @@ export function pageHTML(p: Project, page: Page, { item = null as Item | null, i
   const descText = item?.data.summary || page.description;
   const desc = descText ? `  <meta name="description" content="${escAttr(descText)}">\n` : '';
   const ix = pageUsesIx(p, page) ? IX_RUNTIME : '';
+  // Site code first, then page code, as Webflow orders them.
+  const code = (where: 'head' | 'body') =>
+    [p.settings?.customCode?.[where], page.customCode?.[where]].filter((c) => c && c.trim()).map((c) => c!.trim() + '\n').join('');
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${escHTML(title)}</title>
-${desc}${fonts}${styleTag}${ix}${extraHead}</head>
+${desc}${fonts}${styleTag}${ix}${code('head')}${extraHead}</head>
 <body class="${page.root.classes.join(' ')}">
 ${bodyHTML(p, page, item, false)}
-</body>
+${code('body')}</body>
 </html>
 `;
 }

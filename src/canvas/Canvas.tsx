@@ -5,7 +5,7 @@ import { BASE_CSS, BREAKPOINTS, GOOGLE_FONTS_URL } from '../constants';
 import { bodyHTML, generateCSS, renderNode } from '../codegen';
 import { animationValue, IX_KEYFRAMES } from '../interactions';
 import { currentPage, currentRoot, findNode, isContainer, nodeLabel } from '../model';
-import { getState, toast, useStore } from '../store';
+import { getState, openModal, toast, useStore } from '../store';
 import { dropIsValid, editComponent, performDrop, select, setNodeText, updateNode, type Drop, type DragSource } from '../actions';
 import { onKeyDown } from '../keyboard';
 import { pickImage } from '../files';
@@ -256,6 +256,7 @@ function bindEvents(doc: Document, win: Window) {
     if (!found) return;
     const n = found.node;
     if (n.type === 'symbol') { if (n.componentId && project.components[n.componentId]) editComponent(n.componentId); return; }
+    if (n.type === 'embed') { select(n.id); openModal('embed', n.id); return; }
     if (n.bind?.text) { toast('This text comes from a CMS field. Edit it in the CMS panel.'); return; }
     if (n.text != null && !el.dataset.rep) { e.preventDefault(); startEdit(el, n.id, n.text); return; }
     if (n.type === 'image' && !n.bind?.src) {
@@ -355,7 +356,7 @@ export function Canvas() {
   }, []);
   const bpWidth = BREAKPOINTS[bp].width;
   const width = bpWidth || Math.max(avail.w, DESKTOP_MIN);
-  const scale = Math.min(1, avail.w / width);
+  const scale = avail.w > 0 ? Math.min(1, avail.w / width) : 1;
   useEffect(() => { useStore.setState({ canvasScale: scale }); }, [scale]);
   return (
     <div className="canvas-scroll" ref={scrollRef}>

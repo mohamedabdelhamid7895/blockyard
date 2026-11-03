@@ -45,6 +45,14 @@ export interface Node {
   ix?: Interaction[];
 }
 
+/** Custom code injected into the exported HTML, as in Webflow's site and page settings. */
+export interface CustomCode {
+  /** Inside <head>, after the stylesheet. */
+  head: string;
+  /** Before </body>. */
+  body: string;
+}
+
 export interface Page {
   id: string;
   name: string;
@@ -54,6 +62,7 @@ export interface Page {
   root: Node;
   /** Set on collection template pages: one HTML file is exported per item. */
   collectionId?: string;
+  customCode?: CustomCode;
 }
 
 export interface Component {
@@ -89,9 +98,10 @@ export interface Project {
   classes: Record<string, ClassStyles>;
   components: Record<string, Component>;
   collections: Collection[];
+  settings?: { customCode?: CustomCode };
 }
 
-export type LeftPanel = 'add' | 'navigator' | 'components' | 'pages' | 'cms' | 'templates';
+export type LeftPanel = 'add' | 'navigator' | 'components' | 'pages' | 'cms' | 'templates' | 'ai';
 export type RightTab = 'style' | 'settings' | 'interactions';
 
 export interface UIState {

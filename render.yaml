@@ -1,0 +1,23 @@
+# One-click deploy on Render (free web service). Pair it with a free Neon Postgres database:
+# create one at neon.tech and paste its connection string into DATABASE_URL.
+services:
+  - type: web
+    name: blockyard
+    runtime: node
+    plan: free
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: DATABASE_URL
+        sync: false
+      - key: APP_SECRET
+        generateValue: true
+      - key: PUBLIC_URL
+        sync: false
+      - key: SITES_DOMAIN
+        sync: false
+      - key: CORS_ORIGINS
+        value: https://mohamedabdelhamid7895.github.io

@@ -5,6 +5,7 @@ import {
 } from './model';
 import { getState, live, mutate, persistNow, setUI, toast, useStore } from './store';
 import { buildSections, PAGE_TEMPLATES } from './templates';
+import { importMarkup } from './importer';
 import type { Collection, Field, FieldType, Interaction, Node, Project, UIState } from './types';
 
 const sel = () => {
@@ -57,22 +58,36 @@ export function insertComponent(componentId: string) {
   scrollToSelection();
 }
 
+/** Puts whole sections into the body: after the top-level ancestor of the selection, or at the end (above a footer). */
+function insertTopLevel(p: Project, ui: UIState, nodes: Node[]) {
+  const root = currentRoot(p, ui);
+  const isFooter = (n: Node) => (n.type === 'symbol' ? p.components[n.componentId || '']?.root.tag : n.tag) === 'footer';
+  let index = root.children!.length;
+  while (index > 0 && isFooter(root.children![index - 1])) index--;
+  if (ui.selectedId && ui.selectedId !== root.id) {
+    const top = root.children!.findIndex((c) => contains(c, ui.selectedId!));
+    if (top >= 0) index = top + 1;
+  }
+  root.children!.splice(index, 0, ...nodes);
+  ui.selectedId = nodes[0].id;
+}
+
 export function insertSection(templateId: string) {
-  mutate((p, ui) => {
-    const nodes = buildSections(p, [templateId]);
-    const root = currentRoot(p, ui);
-    // Sections go into the body: after the top-level ancestor of the selection, or at the end (above a footer).
-    const isFooter = (n: Node) => (n.type === 'symbol' ? p.components[n.componentId || '']?.root.tag : n.tag) === 'footer';
-    let index = root.children!.length;
-    while (index > 0 && isFooter(root.children![index - 1])) index--;
-    if (ui.selectedId && ui.selectedId !== root.id) {
-      const top = root.children!.findIndex((c) => contains(c, ui.selectedId!));
-      if (top >= 0) index = top + 1;
-    }
-    root.children!.splice(index, 0, ...nodes);
-    ui.selectedId = nodes[0].id;
-  });
+  mutate((p, ui) => insertTopLevel(p, ui, buildSections(p, [templateId])));
   scrollToSelection();
+}
+
+/** Converts HTML + CSS into elements and classes and inserts them as sections. Returns how many elements were added. */
+export function insertMarkup(html: string, css: string) {
+  let count = 0;
+  mutate((p, ui) => {
+    const doc = document.implementation.createHTMLDocument('');
+    const nodes = importMarkup(p, doc, html, css);
+    count = nodes.length;
+    if (count) insertTopLevel(p, ui, nodes);
+  });
+  if (count) scrollToSelection();
+  return count;
 }
 
 export type DragSource = { kind: 'new'; type: string } | { kind: 'move'; id: string } | { kind: 'component'; componentId: string };
@@ -557,4 +572,40 @@ export function replaceProject(p: Project, msg?: string) {
 export function saveNow() {
   persistNow();
   toast('Saved');
+}
+
+/* ---- Custom code ---- */
+export function setSiteCode(patch: Partial<{ head: string; body: string }>) {
+  mutate((p) => {
+    const cur = p.settings?.customCode || { head: '', body: '' };
+    p.settings = { ...(p.settings || {}), customCode: { ...cur, ...patch } };
+  });
+}
+
+export function setPageCode(pageId: string, patch: Partial<{ head: string; body: string }>) {
+  mutate((p) => {
+    const pg = p.pages.find((x) => x.id === pageId);
+    if (pg) pg.customCode = { head: '', body: '', ...(pg.customCode || {}), ...patch };
+  });
+}
+
+export function setNodeHtml(id: string, html: string) {
+  mutate((p, ui) => {
+    const f = findNode(currentRoot(p, ui), id);
+    if (f) f.node.html = html;
+  });
+}
+
+/** Adds items (for example from Claude), keeping slugs unique. */
+export function addItems(collectionId: string, items: Record<string, string>[]) {
+  mutate((p) => {
+    const c = p.collections.find((x) => x.id === collectionId);
+    if (!c) return;
+    for (const raw of items) {
+      const base = sanitizeSlug(raw.slug || raw.name || 'item') || 'item';
+      let slug = base, i = 2;
+      while (c.items.some((it) => it.data.slug === slug)) slug = `${base}-${i++}`;
+      c.items.push({ id: uid(), data: { ...raw, name: raw.name || slug, slug } });
+    }
+  });
 }

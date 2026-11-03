@@ -6,7 +6,7 @@ import { currentPage, currentRoot, findNode, migrate } from './model';
 import { starterProject } from './templates';
 import type { Node, Project, UIState } from './types';
 
-export type SaveState = 'saved' | 'saving' | 'error';
+export type SaveState = 'saved' | 'saving' | 'error' | 'conflict';
 
 interface Store {
   project: Project;
@@ -62,19 +62,84 @@ function fixUI(p: Project, ui: UIState): UIState {
   return out;
 }
 
+/** Where the open project is saved: browser storage (local mode) or a project on the server. */
+export interface EditorTarget {
+  kind: 'local' | 'remote';
+  projectId?: string;
+  version?: number;
+  name?: string;
+  orgId?: string;
+  pathUrl?: string;
+  subdomainUrl?: string | null;
+  published?: boolean;
+  hasAiKey?: boolean;
+}
+export const useTarget = create<EditorTarget>(() => ({ kind: 'local' }));
+
 let persistTimer: ReturnType<typeof setTimeout> | undefined;
-export function persistNow() {
+let saving: Promise<void> = Promise.resolve();
+let dirty = false;
+
+async function saveRemote() {
+  const t = useTarget.getState();
+  const { api, ApiError } = await import('./api');
+  try {
+    const { version } = await api<{ version: number }>(`/projects/${t.projectId}/data`, {
+      method: 'PUT', body: { data: getState().project, version: t.version },
+    });
+    useTarget.setState({ version });
+    if (!dirty) useStore.setState({ saveState: 'saved' });
+  } catch (e) {
+    const conflict = e instanceof ApiError && e.status === 409;
+    useStore.setState({ saveState: conflict ? 'conflict' : 'error' });
+    toast(conflict ? 'This site was changed somewhere else. Reload to get the latest version.' : (e as Error).message);
+  }
+}
+
+export function persistNow(): Promise<void> {
+  clearTimeout(persistTimer);
+  if (useTarget.getState().kind === 'remote') {
+    if (getState().saveState === 'conflict') return saving;
+    dirty = false;
+    saving = saving.then(saveRemote);
+    return saving;
+  }
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(getState().project));
     useStore.setState({ saveState: 'saved' });
   } catch {
     useStore.setState({ saveState: 'error' });
   }
+  return Promise.resolve();
 }
 function schedulePersist() {
+  if (getState().saveState === 'conflict') return;
+  dirty = true;
   useStore.setState({ saveState: 'saving' });
   clearTimeout(persistTimer);
-  persistTimer = setTimeout(persistNow, 400);
+  persistTimer = setTimeout(persistNow, useTarget.getState().kind === 'remote' ? 900 : 400);
+}
+/** Waits for unsaved changes to reach the server (before publishing or leaving the designer). */
+export async function flushSave() {
+  if (dirty) await persistNow(); else await saving;
+}
+
+/** Opens a project in the designer with a fresh history. */
+export function openInEditor(data: Project, target: EditorTarget) {
+  clearTimeout(persistTimer);
+  dirty = false;
+  useTarget.setState({ projectId: undefined, version: undefined, ...target }, true);
+  const { ui } = getState();
+  useStore.setState({
+    project: data, past: [], future: [], liveBase: null, saveState: 'saved', hoverId: null,
+    ui: { ...ui, pageId: data.pages[0].id, selectedId: null, editingComponentId: null, cmsItemId: null, pstate: 'none' },
+  });
+}
+
+/** Back to the project saved in this browser (local mode). */
+export function openLocalProject() {
+  const p = loadProject();
+  openInEditor(p, { kind: 'local' });
 }
 
 /** Applies a recorded change. `fn` receives an immer draft of the project and a mutable copy of the UI state. */
@@ -130,7 +195,7 @@ export const useRoot = () => useStore((s) => currentRoot(s.project, s.ui));
 export const useSelected = () => useStore((s) => (s.ui.selectedId ? findNode(currentRoot(s.project, s.ui), s.ui.selectedId) : null));
 
 /* ---- Modals ---- */
-export type ModalName = 'export' | 'preview' | 'shortcuts' | 'cms';
+export type ModalName = 'export' | 'preview' | 'shortcuts' | 'cms' | 'site' | 'embed';
 export const useModal = create<{ name: ModalName | null; arg: string | null }>(() => ({ name: null, arg: null }));
 export const openModal = (name: ModalName, arg: string | null = null) => useModal.setState({ name, arg });
 export const closeModal = () => useModal.setState({ name: null, arg: null });

@@ -1,11 +1,14 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
-  Box, ChevronDown, CodeXml, Database, Ellipsis, Eye, FileText, Keyboard, Layers, LayoutTemplate, Monitor, Plus, Redo2,
-  Smartphone, Tablet, Undo2, X,
+  ArrowLeft, Box, ChevronDown, CodeXml, Database, Ellipsis, ExternalLink, Eye, FileText, Keyboard, Layers, LayoutTemplate, Monitor, Plus, Redo2,
+  Rocket, Settings, Smartphone, Sparkles, Tablet, Undo2, X,
 } from 'lucide-react';
+import { api } from './api';
+import { AiPanel } from './panels/AiPanel';
 import { BP_ORDER, BREAKPOINTS } from './constants';
 import { currentPage, migrate } from './model';
-import { getState, openModal, redo, setUI, toast, undo, usePage, useStore } from './store';
+import { flushSave, getState, openModal, redo, setUI, toast, undo, usePage, useStore, useTarget } from './store';
 import { cleanupClasses, exitComponent, openPage, replaceProject } from './actions';
 import { Canvas, endDrag } from './canvas/Canvas';
 import { RightPanel } from './panels/RightPanel';
@@ -25,7 +28,46 @@ const RAIL: { id: LeftPanel; icon: typeof Plus; label: string }[] = [
   { id: 'pages', icon: FileText, label: 'Pages' },
   { id: 'cms', icon: Database, label: 'CMS' },
   { id: 'templates', icon: LayoutTemplate, label: 'Templates' },
+  { id: 'ai', icon: Sparkles, label: 'Claude AI' },
 ];
+
+const SAVE_LABEL = { saved: 'Saved', saving: 'Saving…', error: 'Not saved', conflict: 'Changed elsewhere — reload' } as const;
+
+function PublishMenu() {
+  const target = useTarget();
+  const [busy, setBusy] = useState(false);
+  const live = target.subdomainUrl || target.pathUrl;
+  const publish = async (close: () => void) => {
+    setBusy(true);
+    try {
+      await flushSave();
+      if (getState().saveState === 'conflict') throw new Error('Reload the page first: this site was changed somewhere else.');
+      await api(`/projects/${target.projectId}/deployments`, { body: { note: 'Published from the Designer' } });
+      useTarget.setState({ published: true });
+      toast('Published! Your site is live.');
+      close();
+    } catch (e) {
+      toast((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Menu align="right" className="publish-menu" trigger={() => <button className="publish"><Rocket size={13} /> Publish</button>}>
+      {(close) => (
+        <div className="publish-pop">
+          <h4>Publish {target.name}</h4>
+          <div className="pub-url">
+            <span className={target.published ? 'live-dot' : 'draft-dot'}>{target.published ? 'Live' : 'Not published'}</span>
+            {live && <a href={live} target="_blank" rel="noreferrer">{live.replace(/^https?:\/\//, '')} <ExternalLink size={11} /></a>}
+          </div>
+          <button className="btn primary big" disabled={busy} onClick={() => publish(close)}>{busy ? 'Publishing…' : 'Publish to selected domains'}</button>
+          <Link className="pub-link" to={`/p/${target.projectId}`}>Domains, history and rollbacks →</Link>
+        </div>
+      )}
+    </Menu>
+  );
+}
 
 const BP_ICONS: Record<BP, React.ReactNode> = {
   desktop: <Monitor size={15} />, tablet: <Tablet size={15} />, landscape: <Smartphone size={15} className="rot" />, mobile: <Smartphone size={15} />,
@@ -41,6 +83,9 @@ function TopBar() {
   const canUndo = useStore((s) => s.past.length > 0);
   const canRedo = useStore((s) => s.future.length > 0);
   const coll = page.collectionId ? project.collections.find((c) => c.id === page.collectionId) : null;
+  const remote = useTarget((t) => t.kind === 'remote');
+  const projectId = useTarget((t) => t.projectId);
+  const siteName = useTarget((t) => t.name);
 
   const openJSON = async () => {
     const f = await pickFile('.json,application/json');
@@ -54,7 +99,10 @@ function TopBar() {
 
   return (
     <header className="topbar">
-      <div className="brand" title="Blockyard"><span className="logo-mark">B</span></div>
+      {remote
+        ? <Link className="brand back" to={`/p/${projectId}`} title="Back to the dashboard"><ArrowLeft size={15} /></Link>
+        : <div className="brand" title="Blockyard"><span className="logo-mark">B</span></div>}
+      {remote && <span className="site-name">{siteName}</span>}
       <Menu className="page-menu" trigger={(open) => (
         <button className={'tb-btn page-btn' + (open ? ' on' : '')}>
           <span className="muted">Page:</span> {page.name} <ChevronDown size={12} />
@@ -87,11 +135,13 @@ function TopBar() {
       </div>
       <div className="spacer" />
 
-      <span className={'save-state ' + saveState}>{saveState === 'saved' ? 'Saved' : saveState === 'saving' ? 'Saving…' : 'Not saved (storage full)'}</span>
+      <span className={'save-state ' + saveState} onClick={() => saveState === 'conflict' && window.location.reload()}>{SAVE_LABEL[saveState]}</span>
       <button className="tb-icon" title="Undo (Ctrl+Z)" disabled={!canUndo} onClick={undo}><Undo2 size={15} /></button>
       <button className="tb-icon" title="Redo (Ctrl+Shift+Z)" disabled={!canRedo} onClick={redo}><Redo2 size={15} /></button>
       <Menu align="right" trigger={() => <button className="tb-icon" title="Project"><Ellipsis size={16} /></button>}>
         {(close) => (<>
+          <button onClick={() => { close(); openModal('site'); }}><Settings size={12} /> Site settings &amp; custom code</button>
+          <hr />
           <button onClick={() => { close(); if (confirm('Start a new blank site? (You can undo this.)')) replaceProject(blankProject(), 'New blank site'); }}>New blank site</button>
           <button onClick={() => { close(); if (confirm('Replace the current site with the starter template? (You can undo this.)')) replaceProject(starterProject(), 'Starter template loaded'); }}>Load starter site</button>
           <hr />
@@ -104,7 +154,7 @@ function TopBar() {
       </Menu>
       <button className="tb-icon" title="Preview (P)" onClick={() => openModal('preview')}><Eye size={16} /></button>
       <button className="tb-icon" title="Export code" onClick={() => openModal('export')}><CodeXml size={16} /></button>
-      <button className="publish" onClick={() => openModal('export')}>Export</button>
+      {remote ? <PublishMenu /> : <button className="publish" onClick={() => openModal('export')}>Export</button>}
     </header>
   );
 }
@@ -127,7 +177,7 @@ function LeftRail() {
 function LeftFlyout() {
   const left = useStore((s) => s.ui.left);
   if (!left) return null;
-  const Panel = { add: AddPanel, navigator: NavigatorPanel, components: ComponentsPanel, pages: PagesPanel, cms: CmsPanel, templates: TemplatesPanel }[left];
+  const Panel = { add: AddPanel, navigator: NavigatorPanel, components: ComponentsPanel, pages: PagesPanel, cms: CmsPanel, templates: TemplatesPanel, ai: AiPanel }[left];
   return <aside className="left panel"><Panel /></aside>;
 }
 
@@ -149,12 +199,14 @@ function Toast() {
   return t ? <div className="toast" key={t.key}>{t.msg}</div> : null;
 }
 
-export function App() {
+/** The Designer. What it edits (a local or a server project) is set with openInEditor. */
+export function Editor() {
   useEffect(() => {
     window.addEventListener('keydown', onKeyDown);
     document.addEventListener('dragend', endDrag);
     return () => { window.removeEventListener('keydown', onKeyDown); document.removeEventListener('dragend', endDrag); };
   }, []);
+  const local = useTarget((t) => t.kind === 'local');
   return (
     <div className="app">
       <TopBar />
@@ -170,6 +222,7 @@ export function App() {
       </div>
       <Modals />
       <Toast />
+      {local && <div className="local-badge" title="No server is connected, so this site is saved in this browser only">Local mode</div>}
     </div>
   );
 }

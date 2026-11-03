@@ -3,6 +3,7 @@ import {
   Box, ChevronDown, ChevronRight, Copy, Database, Eye, FileText, LayoutTemplate, Pencil, Plus, Settings, Trash2, Zap,
 } from 'lucide-react';
 import { ADD_GROUPS, ELEMENTS } from '../constants';
+import { iconFor } from '../icons';
 import { currentPage, currentRoot, findNode, isContainer, nodeLabel, pathTo } from '../model';
 import { getState, openModal, setUI, useRoot, useStore } from '../store';
 import {
@@ -32,7 +33,7 @@ export function AddPanel() {
                 onDragStart={(e) => { dragState.current = { kind: 'new', type }; e.dataTransfer.effectAllowed = 'copy'; e.dataTransfer.setData('text/plain', type); }}
                 onDragEnd={endDrag}
                 onClick={() => addElement(type)}>
-                <def.icon size={18} strokeWidth={1.5} />
+                {(() => { const Icon = iconFor(type); return <Icon size={18} strokeWidth={1.5} />; })()}
                 <span>{def.label}</span>
               </div>
             ))}
@@ -70,7 +71,7 @@ export function NavigatorPanel() {
   const walk = (n: Node, parent: Node | null, depth: number) => {
     const kids = n.type === 'symbol' ? [] : n.children || [];
     const closed = collapsed.includes(n.id);
-    const Icon = n.type === 'symbol' ? Box : (ELEMENTS[n.type] || ELEMENTS.div).icon;
+    const Icon = iconFor(n.type);
     const text = n.bind?.text ? `⟨${n.bind.text}⟩` : n.text != null ? n.text.slice(0, 28) : '';
     rows.push(
       <div key={n.id} data-nid={n.id}
