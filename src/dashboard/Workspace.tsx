@@ -1,9 +1,10 @@
 /* Workspace dashboards: sites, teams, members and settings. */
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
-import { Copy, ExternalLink, Globe, LayoutGrid, Mail, MoreHorizontal, Pencil, Plus, Sparkles, Trash2, UsersRound } from 'lucide-react';
+import { Copy, Download, ExternalLink, Globe, LayoutGrid, Mail, MoreHorizontal, Pencil, Plus, Sparkles, Trash2, UsersRound } from 'lucide-react';
 import { api, refreshMe, useSession } from '../api';
 import { Menu } from '../ui';
+import { AiModelsCard, EmailCard } from './Integrations';
 import { attempt, Card, initials, isAdmin, Loading, PageHead, Shell, timeAgo, useLoad, useOrg, type OrgDetails } from './Layout';
 
 export interface ProjectSummary {
@@ -47,6 +48,67 @@ function NewSiteButton({ orgId, teams, teamId }: { orgId: string; teams: OrgDeta
               <div className="btn-row end"><button type="button" className="btn" onClick={() => setOpen(false)}>Cancel</button><button className="btn primary">Create site</button></div>
             </div>
           </form>
+        </div>
+      )}
+    </>
+  );
+}
+
+function ImportSiteButton({ orgId }: { orgId: string }) {
+  const nav = useNavigate();
+  const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState<'url' | 'zip'>('url');
+  const [url, setUrl] = useState('');
+  const [name, setName] = useState('');
+  const [file, setFile] = useState<File | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<{ id: string; platform: string; pages: number; assets?: number; warnings: string[] } | null>(null);
+  const run = async () => {
+    setBusy(true);
+    try {
+      let r;
+      if (mode === 'url') r = await api<NonNullable<typeof result>>(`/projects/org/${orgId}/import-url`, { body: { url, name, maxPages: 10 } });
+      else {
+        const { useSession } = await import('../api');
+        const res = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/projects/org/${orgId}/import-zip?name=${encodeURIComponent(name || file!.name.replace(/\.zip$/i, ''))}`, {
+          method: 'POST', body: file, headers: { 'Content-Type': 'application/zip', Authorization: `Bearer ${useSession.getState().token}` },
+        });
+        r = await res.json();
+        if (!res.ok) throw new Error(r.error || 'Import failed');
+      }
+      setResult(r);
+    } catch (e) { alert((e as Error).message); } finally { setBusy(false); }
+  };
+  return (
+    <>
+      <button className="btn" onClick={() => { setOpen(true); setResult(null); }}><Download size={13} /> Import site</button>
+      {open && (
+        <div className="modal-back" onMouseDown={(e) => e.target === e.currentTarget && !busy && setOpen(false)}>
+          <div className="modal">
+            <div className="modal-head"><h3>Import a site</h3></div>
+            <div className="modal-body form-stack">
+              {result ? <>
+                <p>Imported <b>{result.pages}</b> page{result.pages === 1 ? '' : 's'} from {result.platform}{result.assets ? ` and ${result.assets} files` : ''}.</p>
+                {result.warnings.map((w) => <div key={w} className="warn-hint">{w}</div>)}
+                <p className="muted small">Classes became editable styles. CSS that can't be edited visually is kept in Site settings → custom code so pages look the same. Review the pages, then publish.</p>
+                <div className="btn-row end"><button className="btn primary" onClick={() => nav(`/p/${result.id}/edit`)}>Open in Designer</button></div>
+              </> : <>
+                <div className="seg wide-seg"><button className={mode === 'url' ? 'on' : ''} onClick={() => setMode('url')}>From a website</button><button className={mode === 'zip' ? 'on' : ''} onClick={() => setMode('zip')}>From a ZIP</button></div>
+                {mode === 'url' ? <>
+                  <label>Website address<input className="f-input big" autoFocus placeholder="https://www.example.com" value={url} onChange={(e) => setUrl(e.target.value)} /></label>
+                  <p className="muted small">Works with sites built on Webflow, WordPress, Squarespace, Wix, Framer, Shopify or hand-written HTML. Up to 10 linked pages are copied. Images stay linked to the original site. Only import sites you own or have permission to use.</p>
+                </> : <>
+                  <label>ZIP file<input className="f-input big" type="file" accept=".zip,application/zip" onChange={(e) => setFile(e.target.files?.[0] || null)} /></label>
+                  <p className="muted small">A Webflow code export, or any static site (HTML, CSS, images, fonts). Files are uploaded to your Blockyard assets.</p>
+                </>}
+                <label>Site name<input className="f-input big" placeholder="Optional" value={name} onChange={(e) => setName(e.target.value)} /></label>
+                <div className="btn-row end">
+                  <button className="btn" disabled={busy} onClick={() => setOpen(false)}>Cancel</button>
+                  <button className="btn primary" disabled={busy || (mode === 'url' ? !url.trim() : !file)} onClick={run}>{busy ? 'Importing…' : 'Import'}</button>
+                </div>
+              </>}
+            </div>
+          </div>
         </div>
       )}
     </>
@@ -105,6 +167,7 @@ export function WorkspaceHome() {
   return (
     <Shell>
       <PageHead title={d.org.name} sub={d.org.personal ? 'Your personal workspace' : `${d.members.length} member${d.members.length === 1 ? '' : 's'} · ${d.teams.length} team${d.teams.length === 1 ? '' : 's'}`}>
+        <ImportSiteButton orgId={d.org.id} />
         <NewSiteButton orgId={d.org.id} teams={d.teams} />
       </PageHead>
       <div className="stats">
@@ -112,8 +175,8 @@ export function WorkspaceHome() {
         <div className="stat"><b>{d.stats.published}</b><span>Published</span></div>
         <div className="stat"><b>{d.stats.domains}</b><span>Custom domains</span></div>
         <div className="stat"><b>{d.members.length}</b><span>Members</span></div>
-        <Link to={`/w/${d.org.id}/settings#claude`} className={'stat ai' + (d.org.has_ai_key ? ' on' : '')}>
-          <b><Sparkles size={18} /></b><span>{d.org.has_ai_key ? 'Claude connected' : 'Connect Claude'}</span>
+        <Link to={`/w/${d.org.id}/settings#claude`} className={'stat ai' + (d.ai.enabled ? ' on' : '')}>
+          <b><Sparkles size={18} /></b><span>{d.ai.enabled ? 'AI connected' : 'Connect AI'}</span>
         </Link>
       </div>
       <div className="toolbar">
@@ -302,7 +365,6 @@ export function WorkspaceSettings() {
   const org = useOrg(orgId);
   const nav = useNavigate();
   const loc = useLocation();
-  const [key, setKey] = useState('');
   useEffect(() => {
     if (org.data && loc.hash) document.getElementById(loc.hash.slice(1))?.scrollIntoView({ behavior: 'smooth' });
   }, [org.data, loc.hash]);
@@ -318,26 +380,9 @@ export function WorkspaceSettings() {
           <input className="f-input big" defaultValue={d.org.name} disabled={!admin}
             onBlur={(e) => e.target.value.trim() && e.target.value !== d.org.name && attempt(() => api(base, { method: 'PATCH', body: { name: e.target.value } })).then(() => { org.reload(); refreshMe(); })} /></div>
       </Card>
-      <Card id="claude" title={<><Sparkles size={15} /> Claude &amp; AI</>}>
-        <p className="muted">Connect Claude to generate sections from a description, rewrite copy, fill CMS collections and write custom code in the Designer. Your workspace uses its own Anthropic API key, so usage is billed to your Anthropic account. The key is encrypted on the server and never sent to the browser.</p>
-        <div className={'ai-status' + (d.org.has_ai_key ? ' on' : '')}>{d.org.has_ai_key ? 'Claude is connected' : 'Claude is not connected'}</div>
-        {admin ? <>
-          <div className="f-row wide"><label className="f-label">API key</label>
-            <input className="f-input big" type="password" autoComplete="off" placeholder={d.org.has_ai_key ? '•••••••• (saved, paste a new key to replace it)' : 'sk-ant-…'} value={key} onChange={(e) => setKey(e.target.value)} />
-            <button className="btn primary big" disabled={!key.trim()} onClick={() => attempt(() => api(`${base}/ai`, { method: 'PUT', body: { apiKey: key } })).then((ok) => { if (ok) { setKey(''); org.reload(); } })}>Save key</button>
-          </div>
-          <div className="f-row wide"><label className="f-label">Model</label>
-            <select className="f-input big" value={d.org.ai_model} onChange={(e) => attempt(() => api(`${base}/ai`, { method: 'PUT', body: { model: e.target.value } })).then(org.reload)}>
-              {d.aiModels.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
-            </select>
-          </div>
-          <div className="btn-row">
-            <a className="btn" href="https://console.anthropic.com/settings/keys" target="_blank" rel="noreferrer"><ExternalLink size={12} /> Get an API key</a>
-            {d.org.has_ai_key && <button className="btn danger" onClick={() => confirm('Disconnect Claude from this workspace?') && attempt(() => api(`${base}/ai`, { method: 'PUT', body: { apiKey: null } })).then(org.reload)}>Disconnect</button>}
-          </div>
-        </> : <p className="muted">Ask a workspace admin to connect Claude.</p>}
-        <p className="muted small">Want Claude Desktop or Claude Code to edit your sites directly? Create an access token in <Link to="/account#claude">Account → Connect Claude</Link>.</p>
-      </Card>
+      <AiModelsCard d={d} onChange={org.reload} />
+      <EmailCard d={d} onChange={org.reload} />
+      <p className="muted small">Want Claude Desktop or Claude Code to edit your sites directly? Create an access token in <Link to="/account#claude">Account → Connect Claude</Link>.</p>
       {d.role === 'owner' && !d.org.personal && (
         <Card title="Danger zone">
           <div className="row-item"><div className="grow"><b>Delete workspace</b><span className="muted small">Deletes every site, deployment, domain and team in it.</span></div>

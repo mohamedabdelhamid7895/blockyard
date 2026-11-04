@@ -173,3 +173,51 @@ export function importMarkup(p: Project, doc: Document, html: string, css = ''):
   });
   return nodes.map(reId);
 }
+
+/** Splits CSS into top-level blocks: rules and at-rules, each with its full text. */
+function cssBlocks(css: string) {
+  const out: { head: string; body: string }[] = [];
+  let i = 0;
+  while (i < css.length) {
+    const open = css.indexOf('{', i);
+    if (open < 0) break;
+    const head = css.slice(i, open).trim();
+    // Statement at-rules like @import or @charset end with ";" before any "{".
+    const semi = css.slice(i, open).lastIndexOf(';');
+    if (head.startsWith('@') && semi >= 0 && !css.slice(i, i + semi).includes('{')) {
+      out.push({ head: css.slice(i, i + semi + 1).trim(), body: '' });
+      i = i + semi + 1;
+      continue;
+    }
+    let depth = 1, j = open + 1;
+    while (j < css.length && depth) { if (css[j] === '{') depth++; else if (css[j] === '}') depth--; j++; }
+    out.push({ head: head.replace(/^[;\s]+/, ''), body: css.slice(open + 1, j - 1) });
+    i = j;
+  }
+  return out;
+}
+
+const PURE_CLASS = /^(?:\.[A-Za-z_][\w-]*)+(?::hover|:active|:focus)?$/;
+
+/**
+ * The CSS that class import can't represent (element, id and descendant selectors, fonts, keyframes, variables),
+ * kept as-is so an imported site still looks right. Rules made only of class selectors are left out.
+ */
+export function leftoverCSS(css: string): string {
+  css = css.replace(/\/\*[\s\S]*?\*\//g, '');
+  const keep = (text: string, inMedia: boolean): string => cssBlocks(text).map(({ head, body }) => {
+    if (!body && head.startsWith('@')) return inMedia ? '' : head;
+    if (head.startsWith('@media')) {
+      // parseCSS only turns max-width queries up to 991px into breakpoints; keep any other query whole.
+      const max = head.match(/max-width:\s*(\d+)px/);
+      if (!max || +max[1] > 991 || /min-width|print|orientation/.test(head)) return `${head}{${body}}`;
+      const inner = keep(body, true);
+      return inner.trim() ? `${head}{${inner}}` : '';
+    }
+    if (head.startsWith('@')) return `${head}{${body}}`;
+    const sels = head.split(',').map((s) => s.trim()).filter(Boolean);
+    const rest = sels.filter((s) => !PURE_CLASS.test(s));
+    return rest.length ? `${rest.join(',')}{${body}}` : '';
+  }).filter(Boolean).join('\n');
+  return keep(css, false);
+}

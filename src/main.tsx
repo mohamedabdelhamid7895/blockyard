@@ -9,6 +9,7 @@ import { AuthPage, InvitePage } from './dashboard/Auth';
 import { MembersPage, TeamPage, TeamsPage, WorkspaceHome, WorkspaceSettings } from './dashboard/Workspace';
 import { ProjectDashboard } from './dashboard/Project';
 import { AccountPage } from './dashboard/Account';
+import { AutomationEditor, AutomationsPage } from './dashboard/Automations';
 import { Loading } from './dashboard/Layout';
 import type { Project } from './types';
 import './styles.css';
@@ -74,6 +75,8 @@ function Root() {
         <Route path="/w/:orgId/teams" element={<RequireAuth><TeamsPage /></RequireAuth>} />
         <Route path="/w/:orgId/teams/:teamId" element={<RequireAuth><TeamPage /></RequireAuth>} />
         <Route path="/w/:orgId/members" element={<RequireAuth><MembersPage /></RequireAuth>} />
+        <Route path="/w/:orgId/automations" element={<RequireAuth><AutomationsPage /></RequireAuth>} />
+        <Route path="/w/:orgId/automations/:workflowId" element={<RequireAuth><AutomationEditor /></RequireAuth>} />
         <Route path="/w/:orgId/settings" element={<RequireAuth><WorkspaceSettings /></RequireAuth>} />
         <Route path="/p/:projectId" element={<RequireAuth><ProjectDashboard /></RequireAuth>} />
         <Route path="/p/:projectId/edit" element={<RequireAuth><EditorPage /></RequireAuth>} />

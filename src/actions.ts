@@ -6,7 +6,7 @@ import {
 import { getState, live, mutate, persistNow, setUI, toast, useStore } from './store';
 import { buildSections, PAGE_TEMPLATES } from './templates';
 import { importMarkup } from './importer';
-import type { Collection, Field, FieldType, Interaction, Node, Project, UIState } from './types';
+import type { Collection, Field, FieldType, Interaction, Node, Page, Project, UIState } from './types';
 
 const sel = () => {
   const { project, ui } = getState();
@@ -607,5 +607,70 @@ export function addItems(collectionId: string, items: Record<string, string>[]) 
       while (c.items.some((it) => it.data.slug === slug)) slug = `${base}-${i++}`;
       c.items.push({ id: uid(), data: { ...raw, name: raw.name || slug, slug } });
     }
+  });
+}
+
+export function updatePageSeo(pageId: string, patch: Partial<NonNullable<Page['seo']>>) {
+  mutate((p) => {
+    const pg = p.pages.find((x) => x.id === pageId);
+    if (!pg) return;
+    const next = { ...(pg.seo || {}), ...patch };
+    for (const [k, v] of Object.entries(next)) if (v === '' || v === false) delete (next as Record<string, unknown>)[k];
+    pg.seo = next;
+  });
+}
+
+export function setSiteSettings(patch: Partial<NonNullable<Project['settings']>>) {
+  mutate((p) => { p.settings = { ...(p.settings || {}), ...patch }; });
+}
+
+/* ---- A/B tests ---- */
+/** Duplicates a page as variant B and attaches a draft test to it. Returns the variant's id. */
+export function createAbTest(pageId: string) {
+  let variantId = '';
+  mutate((p) => {
+    const page = p.pages.find((x) => x.id === pageId);
+    if (!page || page.abTest || page.variantOf || page.collectionId) return;
+    const variant = clone(page);
+    variant.id = uid();
+    variant.name = `${page.name} (B)`;
+    variant.slug = uniquePageSlug(p, `${page.slug}--b`);
+    variant.variantOf = page.id;
+    delete variant.abTest;
+    reId(variant.root);
+    p.pages.splice(p.pages.indexOf(page) + 1, 0, variant);
+    page.abTest = { id: 'ab' + uid().slice(1), variantPageId: variant.id, split: 50, goal: { type: 'cta' }, status: 'draft' };
+    variantId = variant.id;
+  });
+  return variantId;
+}
+
+export function updateAbTest(pageId: string, patch: Partial<NonNullable<Page['abTest']>>) {
+  mutate((p) => {
+    const page = p.pages.find((x) => x.id === pageId);
+    if (!page?.abTest) return;
+    Object.assign(page.abTest, patch);
+    if (patch.status === 'running' && !page.abTest.startedAt) page.abTest.startedAt = new Date().toISOString();
+  });
+}
+
+/** Removes the test and its variant page, keeping the original. */
+export function deleteAbTest(pageId: string) {
+  mutate((p, ui) => {
+    const page = p.pages.find((x) => x.id === pageId);
+    if (!page?.abTest) return;
+    p.pages = p.pages.filter((x) => x.variantOf !== page.id);
+    delete page.abTest;
+    if (!p.pages.some((x) => x.id === ui.pageId)) ui.pageId = page.id;
+  });
+}
+
+/** Replaces texts in a page by node id (used for AI-written variant copy). */
+export function replaceTexts(pageId: string, texts: { id: string; text: string }[]) {
+  mutate((p) => {
+    const page = p.pages.find((x) => x.id === pageId);
+    if (!page) return;
+    const map = new Map(texts.map((t) => [t.id, t.text]));
+    walkTree(page.root, (n) => { if (n.text != null && map.has(n.id) && map.get(n.id)!.trim()) n.text = map.get(n.id)!; });
   });
 }

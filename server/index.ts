@@ -12,6 +12,13 @@ import { projects } from './routes/projects';
 import { ai } from './ai';
 import { mcpHandler } from './mcp';
 import { sitesByHost, sitesByPath } from './sites';
+import compression from 'compression';
+import { formsPublic, submissions } from './routes/forms';
+import { assetsApi, assetsPublic } from './routes/assets';
+import { hooks, smtp, workflows } from './routes/workflows';
+import { abPublic, experiments } from './routes/experiments';
+import { startScheduler } from './workflows';
+import { importer } from './routes/import';
 
 await initDb();
 
@@ -19,8 +26,14 @@ const app = express();
 app.set('trust proxy', 1);
 app.disable('x-powered-by');
 
+app.use(compression());
 // Published sites on their own hosts come first, before the app and API.
 app.use(sitesByHost);
+// Public endpoints published sites call from any domain.
+app.use('/api/forms', formsPublic);
+app.use('/api/ab', abPublic);
+app.use('/assets', assetsPublic);
+app.use('/hooks', hooks);
 
 app.use('/api', cors({ origin: (origin, cb) => cb(null, !origin || env.corsOrigins.includes(origin) || !env.isProd) }));
 app.use('/api', express.json({ limit: '25mb' }));
@@ -28,7 +41,13 @@ app.get('/api/health', (_req, res) => res.json({ ok: true, version: 2 }));
 app.use('/api/auth', auth);
 app.use('/api/orgs', orgs);
 app.use('/api/invites', invites);
+app.use('/api/projects', importer);
+app.use('/api/projects', assetsApi);
+app.use('/api/projects', submissions);
+app.use('/api/projects', experiments);
 app.use('/api/projects', projects);
+app.use('/api/workflows', workflows);
+app.use('/api/orgs', smtp);
 app.use('/api/ai', ai);
 app.use('/api', (_req, res) => res.status(404).json({ error: 'Not found' }));
 
@@ -52,4 +71,5 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   res.status(500).json({ error: 'Something went wrong on the server' });
 });
 
+startScheduler();
 app.listen(env.port, () => console.log(`Blockyard server on ${env.publicUrl} (port ${env.port})`));

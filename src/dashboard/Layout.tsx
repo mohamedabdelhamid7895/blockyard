@@ -1,7 +1,7 @@
 /* Dashboard shell: sidebar with the workspace switcher, plus small shared pieces. */
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { NavLink, useLocation, useNavigate, useParams } from 'react-router-dom';
-import { Check, ChevronDown, LayoutGrid, LogOut, Plus, Settings, Sparkles, User, Users, UsersRound } from 'lucide-react';
+import { Check, ChevronDown, LayoutGrid, LogOut, Plus, Settings, Sparkles, User, Users, UsersRound, Workflow } from 'lucide-react';
 import { api, refreshMe, signOut, useSession } from '../api';
 import { Menu } from '../ui';
 
@@ -19,13 +19,14 @@ export function useLoad<T>(fn: () => Promise<T>, deps: unknown[]) {
 }
 
 export interface OrgDetails {
-  org: { id: string; name: string; personal: boolean; ai_model: string; has_ai_key: boolean };
+  org: { id: string; name: string; personal: boolean; has_smtp: boolean };
   role: 'owner' | 'admin' | 'member';
   members: { id: string; name: string; email: string; role: 'owner' | 'admin' | 'member'; created_at: string }[];
   teams: { id: string; name: string; member_ids: string[]; project_count: number }[];
   invites: { id: string; email: string; role: string; token: string; created_at: string }[];
   stats: { projects: number; published: number; domains: number };
-  aiModels: { id: string; label: string }[];
+  ai: { active: string | null; enabled: boolean; providers: Record<string, { hasKey: boolean; model: string; baseUrl: string }> };
+  providers: { id: string; label: string; baseUrl?: string; keyRequired: boolean; models: string[]; keyHint: string; docs: string }[];
 }
 
 export const useOrg = (orgId: string | undefined) =>
@@ -94,8 +95,9 @@ export function Shell({ children }: { children: ReactNode }) {
             <NavLink end to={`/w/${org.id}`}><LayoutGrid size={15} /> Sites</NavLink>
             <NavLink to={`/w/${org.id}/teams`}><UsersRound size={15} /> Teams</NavLink>
             <NavLink to={`/w/${org.id}/members`}><Users size={15} /> Members</NavLink>
+            <NavLink to={`/w/${org.id}/automations`}><Workflow size={15} /> Automations</NavLink>
             <NavLink to={`/w/${org.id}/settings`} className={({ isActive }) => (isActive && loc.hash !== '#claude' ? 'active' : '')}><Settings size={15} /> Workspace settings</NavLink>
-            <NavLink to={`/w/${org.id}/settings#claude`} className={({ isActive }) => 'claude-link' + (isActive && loc.hash === '#claude' ? ' active' : '')}><Sparkles size={15} /> Claude &amp; AI</NavLink>
+            <NavLink to={`/w/${org.id}/settings#claude`} className={({ isActive }) => 'claude-link' + (isActive && loc.hash === '#claude' ? ' active' : '')}><Sparkles size={15} /> AI models</NavLink>
           </nav>
         )}
         <div className="spacer" />

@@ -38,12 +38,13 @@ export const VOID_TAGS = new Set(['img', 'input', 'hr', 'br']);
 const BLOCK_TAGS = ['div', 'section', 'header', 'footer', 'nav', 'main', 'article', 'aside'];
 
 /** A child created along with an element: a type, optionally with a tag and a CMS binding. */
-export type KidSpec = string | { type: string; tag?: string; bind?: Binding };
+export type KidSpec = string | { type: string; tag?: string; bind?: Binding; text?: string; attrs?: Record<string, string>; kids?: KidSpec[] };
 
 export interface ElementDef {
   label: string;
   tag: string;
-  group?: 'Layout' | 'Basic' | 'Media' | 'Forms' | 'CMS';
+  group?: 'Layout' | 'Basic' | 'Media' | 'Forms' | 'Components' | 'Accessibility' | 'CMS';
+  options?: string[];
   container?: boolean;
   hidden?: boolean;
   tags?: string[];
@@ -116,9 +117,91 @@ export const ELEMENTS: Record<string, ElementDef> = {
   collectionitem: { label: 'Collection Item', tag: 'div', container: true, hidden: true, cls: 'collection-item',
     kids: [{ type: 'heading', tag: 'h3', bind: { text: 'name' } }, { type: 'link', bind: { href: '__url' } }] },
   symbol: { label: 'Component', tag: 'div', hidden: true },
+
+  /* Structure */
+  linkblock: { label: 'Link Block', tag: 'a', container: true, group: 'Layout', cls: 'link-block', attrs: { href: '#' },
+    style: { display: 'block', color: 'inherit', 'text-decoration': 'none' } },
+  main: { label: 'Main Landmark', tag: 'main', container: true, group: 'Accessibility', cls: 'main', attrs: { id: 'main' } },
+
+  /* Text */
+  richtext: { label: 'Rich Text', tag: 'div', group: 'Basic', cls: 'rich-text',
+    html: '<h2>Rich text heading</h2><p>Double-click to edit. Use <strong>bold</strong>, <em>italic</em> and <a href="#">links</a>.</p><ul><li>First point</li><li>Second point</li></ul>' },
+
+  /* Forms */
+  label: { label: 'Label', tag: 'label', text: 'Label', group: 'Forms', cls: 'field-label',
+    style: { display: 'block', 'margin-bottom': '6px', 'font-size': '14px', 'font-weight': '600' } },
+  select: { label: 'Select', tag: 'select', group: 'Forms', cls: 'select-field', attrs: { name: 'choice' },
+    options: ['Choose one…', 'First option', 'Second option'], style: { ...field, 'background-color': '#ffffff' } },
+  checkbox: { label: 'Checkbox', tag: 'label', text: 'I agree to the terms', group: 'Forms', cls: 'checkbox-field', attrs: { name: 'agree' },
+    style: { display: 'flex', gap: '8px', 'align-items': 'center', 'font-size': '15px' } },
+  radio: { label: 'Radio Button', tag: 'label', text: 'Option one', group: 'Forms', cls: 'radio-field', attrs: { name: 'choice', value: 'option-one' },
+    style: { display: 'flex', gap: '8px', 'align-items': 'center', 'font-size': '15px' } },
+
+  /* Components */
+  navbar: { label: 'Navbar', tag: 'nav', container: true, group: 'Components', cls: 'navbar', attrs: { 'aria-label': 'Main' },
+    style: { display: 'flex', 'flex-wrap': 'wrap', 'align-items': 'center', 'justify-content': 'space-between', gap: '16px', ...pad('16px', '24px') },
+    kids: [{ type: 'link', text: 'Brand', attrs: { href: 'index.html' } }, 'navmenu', 'navbutton'] },
+  navmenu: { label: 'Nav Menu', tag: 'div', container: true, hidden: true, cls: 'nav-menu',
+    style: { display: 'flex', 'align-items': 'center', gap: '24px' },
+    tablet: { 'flex-basis': '100%', 'flex-direction': 'column', 'align-items': 'flex-start', gap: '12px', 'padding-top': '12px' },
+    kids: [{ type: 'link', text: 'Home', attrs: { href: 'index.html' } }, { type: 'link', text: 'About', attrs: { href: '#' } }, { type: 'link', text: 'Contact', attrs: { href: '#' } }] },
+  navbutton: { label: 'Menu Button', tag: 'button', hidden: true, cls: 'menu-button', attrs: { type: 'button', 'aria-label': 'Open menu' },
+    style: { 'background-color': 'transparent', 'border-width': '0px', ...pad('8px', '8px'), cursor: 'pointer', color: 'inherit' } },
+  tabs: { label: 'Tabs', tag: 'div', container: true, group: 'Components', cls: 'tabs', attrs: { 'data-current': '0' },
+    kids: ['tabsmenu', 'tabscontent'] },
+  tabsmenu: { label: 'Tabs Menu', tag: 'div', container: true, hidden: true, cls: 'tabs-menu',
+    style: { display: 'flex', gap: '4px', 'border-bottom-width': '1px', 'border-bottom-style': 'solid', 'border-bottom-color': '#e5e7eb' },
+    kids: [{ type: 'tablink', text: 'Tab 1' }, { type: 'tablink', text: 'Tab 2' }, { type: 'tablink', text: 'Tab 3' }] },
+  tablink: { label: 'Tab Link', tag: 'button', text: 'Tab', hidden: true, cls: 'tab-link', attrs: { type: 'button' },
+    style: { ...pad('10px', '16px'), 'background-color': 'transparent', 'border-width': '0px', cursor: 'pointer', 'font-weight': '600', 'font-size': '15px', color: 'inherit' } },
+  tabscontent: { label: 'Tabs Content', tag: 'div', container: true, hidden: true, cls: 'tabs-content',
+    kids: [{ type: 'tabpane', kids: [{ type: 'paragraph', text: 'Content for the first tab.' }] },
+      { type: 'tabpane', kids: [{ type: 'paragraph', text: 'Content for the second tab.' }] },
+      { type: 'tabpane', kids: [{ type: 'paragraph', text: 'Content for the third tab.' }] }] },
+  tabpane: { label: 'Tab Pane', tag: 'div', container: true, hidden: true, cls: 'tab-pane', style: { 'padding-top': '20px', 'padding-bottom': '20px' } },
+  accordion: { label: 'Accordion', tag: 'details', container: true, group: 'Components', cls: 'accordion',
+    style: { 'border-bottom-width': '1px', 'border-bottom-style': 'solid', 'border-bottom-color': '#e5e7eb', 'padding-top': '16px', 'padding-bottom': '16px' },
+    kids: [{ type: 'summary', text: 'What is your question?' }, { type: 'paragraph', text: 'The answer goes here. Accordions use native HTML, so they work with keyboards and screen readers.' }] },
+  summary: { label: 'Accordion Toggle', tag: 'summary', text: 'Question', hidden: true, cls: 'accordion-toggle', style: { 'font-weight': '600', 'font-size': '18px' } },
+  dropdown: { label: 'Dropdown', tag: 'details', container: true, group: 'Components', cls: 'dropdown', style: { position: 'relative', display: 'inline-block' },
+    kids: [{ type: 'summary', text: 'Dropdown' }, 'dropdownlist'] },
+  dropdownlist: { label: 'Dropdown List', tag: 'div', container: true, hidden: true, cls: 'dropdown-list',
+    style: { position: 'absolute', top: '100%', left: '0px', 'min-width': '180px', display: 'flex', 'flex-direction': 'column', ...pad('8px', '8px'),
+      'background-color': '#ffffff', 'border-radius': '8px', 'box-shadow': '0 10px 30px rgba(0,0,0,.12)', 'z-index': '20' },
+    kids: [{ type: 'link', text: 'Link one' }, { type: 'link', text: 'Link two' }, { type: 'link', text: 'Link three' }] },
+  slider: { label: 'Slider', tag: 'div', container: true, group: 'Components', cls: 'slider', style: { position: 'relative' },
+    kids: ['slidertrack', { type: 'sliderarrow', text: '‹', attrs: { 'aria-label': 'Previous slide', 'data-dir': 'prev' } },
+      { type: 'sliderarrow', text: '›', attrs: { 'aria-label': 'Next slide', 'data-dir': 'next' } }] },
+  slidertrack: { label: 'Slider Track', tag: 'div', container: true, hidden: true, cls: 'slider-track',
+    kids: [{ type: 'slide', kids: [{ type: 'heading', text: 'Slide one' }] }, { type: 'slide', kids: [{ type: 'heading', text: 'Slide two' }] },
+      { type: 'slide', kids: [{ type: 'heading', text: 'Slide three' }] }] },
+  slide: { label: 'Slide', tag: 'div', container: true, hidden: true, cls: 'slide',
+    style: { 'min-height': '300px', ...pad('48px', '64px'), 'background-color': '#eef2ff', display: 'flex', 'align-items': 'center', 'justify-content': 'center' } },
+  sliderarrow: { label: 'Slider Arrow', tag: 'button', text: '›', hidden: true, cls: 'slider-arrow', attrs: { type: 'button' },
+    style: { position: 'absolute', top: '50%', transform: 'translateY(-50%)', width: '44px', height: '44px', 'border-radius': '50%', 'border-width': '0px',
+      'background-color': '#ffffff', 'box-shadow': '0 4px 14px rgba(0,0,0,.15)', 'font-size': '24px', cursor: 'pointer' } },
+  lightbox: { label: 'Lightbox', tag: 'a', container: true, group: 'Media', cls: 'lightbox-link', attrs: { href: PLACEHOLDER_IMG, 'aria-label': 'Open image' },
+    style: { display: 'block' }, kids: ['image'] },
+  map: { label: 'Map', tag: 'iframe', group: 'Media', cls: 'map', attrs: { 'data-address': 'Brandenburg Gate, Berlin', title: 'Map' },
+    style: { width: '100%', height: '360px', 'border-width': '0px', 'border-radius': '12px', display: 'block' } },
+  bgvideo: { label: 'Background Video', tag: 'div', container: true, group: 'Media', cls: 'background-video',
+    attrs: { 'data-video': 'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4' },
+    style: { 'min-height': '420px', display: 'flex', 'align-items': 'center', 'justify-content': 'center', color: '#ffffff', 'background-color': '#111111' },
+    kids: [{ type: 'heading', text: 'Background video' }] },
+  icon: { label: 'Icon', tag: 'span', group: 'Media', cls: 'icon', attrs: { 'data-icon': 'star' },
+    style: { display: 'inline-flex', width: '32px', height: '32px', color: '#146ef5' } },
+
+  /* Accessibility */
+  skiplink: { label: 'Skip Link', tag: 'a', text: 'Skip to main content', group: 'Accessibility', cls: 'skip-link', attrs: { href: '#main' },
+    style: { ...pad('10px', '16px'), 'background-color': '#111111', color: '#ffffff', 'border-radius': '8px', 'text-decoration': 'none', 'font-weight': '600' } },
+  srtext: { label: 'Screen Reader Text', tag: 'span', text: 'Text only screen readers announce', group: 'Accessibility', cls: 'sr-text',
+    style: { position: 'absolute', width: '1px', height: '1px', overflow: 'hidden', clip: 'rect(0 0 0 0)', 'white-space': 'nowrap' } },
+  a11ywidget: { label: 'Accessibility Widget', tag: 'div', group: 'Accessibility', cls: 'a11y-widget',
+    attrs: { 'data-position': 'bottom-right', 'data-color': '#146ef5', 'data-label': 'Accessibility',
+      'data-features': 'text,contrast,dark,grayscale,links,readable,spacing,animations,cursor,guide,images,speak' } },
 };
 
-export const ADD_GROUPS = ['Layout', 'Basic', 'Media', 'Forms', 'CMS'] as const;
+export const ADD_GROUPS = ['Layout', 'Basic', 'Media', 'Forms', 'Components', 'Accessibility', 'CMS'] as const;
 
 export const FONTS: [string, string][] = [
   ['Inter, system-ui, sans-serif', 'Inter'], ['"DM Sans", sans-serif', 'DM Sans'], ['Poppins, sans-serif', 'Poppins'],

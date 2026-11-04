@@ -43,6 +43,8 @@ export interface Node {
   limit?: number;
   bind?: Binding;
   ix?: Interaction[];
+  /** `select` nodes: one option per entry. */
+  options?: string[];
 }
 
 /** Custom code injected into the exported HTML, as in Webflow's site and page settings. */
@@ -63,6 +65,43 @@ export interface Page {
   /** Set on collection template pages: one HTML file is exported per item. */
   collectionId?: string;
   customCode?: CustomCode;
+  seo?: PageSeo;
+  /** Set on the control page while it has an A/B test. */
+  abTest?: AbTest;
+  /** Set on a variant page: the id of the page it is a variant of. Variants are never linked or listed. */
+  variantOf?: string;
+}
+
+export interface PageSeo {
+  ogTitle?: string;
+  ogDescription?: string;
+  ogImage?: string;
+  /** Keep this page out of search engines. */
+  noindex?: boolean;
+  excludeFromSitemap?: boolean;
+}
+
+export type AbGoal = { type: 'cta' } | { type: 'form' } | { type: 'page'; page: string } | { type: 'click'; selector: string };
+export interface AbTest {
+  id: string;
+  variantPageId: string;
+  /** Percentage of visitors who see variant B. */
+  split: number;
+  goal: AbGoal;
+  status: 'draft' | 'running' | 'paused';
+  startedAt?: string;
+}
+
+export interface SiteSettings {
+  customCode?: CustomCode;
+  siteName?: string;
+  /** <html lang>, e.g. "en". */
+  lang?: string;
+  favicon?: string;
+  /** Default social share image. */
+  ogImage?: string;
+  /** Minify HTML and CSS when publishing (on unless set to false). */
+  minify?: boolean;
 }
 
 export interface Component {
@@ -98,10 +137,10 @@ export interface Project {
   classes: Record<string, ClassStyles>;
   components: Record<string, Component>;
   collections: Collection[];
-  settings?: { customCode?: CustomCode };
+  settings?: SiteSettings;
 }
 
-export type LeftPanel = 'add' | 'navigator' | 'components' | 'pages' | 'cms' | 'templates' | 'ai';
+export type LeftPanel = 'add' | 'navigator' | 'components' | 'pages' | 'cms' | 'templates' | 'ai' | 'audit';
 export type RightTab = 'style' | 'settings' | 'interactions';
 
 export interface UIState {

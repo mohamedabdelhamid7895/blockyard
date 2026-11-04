@@ -127,7 +127,7 @@ export function PagesPanel() {
   const pages = useStore((s) => s.project.pages);
   const collections = useStore((s) => s.project.collections);
   const pageId = useStore((s) => s.ui.pageId);
-  const staticPages = pages.filter((p) => !p.collectionId);
+  const staticPages = pages.filter((p) => !p.collectionId && !p.variantOf);
   const templatePages = pages.filter((p) => p.collectionId);
   const pageRow = (p: (typeof pages)[number]) => (
     <div key={p.id} className={'page-row' + (p.id === pageId ? ' on' : '')} onClick={() => openPage(p.id)}>
@@ -147,7 +147,12 @@ export function PagesPanel() {
         <button className="icon-btn" title="New page" onClick={() => addPage('blank')}><Plus size={14} /></button>
       </PanelHead>
       <h4 className="lp-sub">Static pages</h4>
-      {staticPages.map(pageRow)}
+      {staticPages.map((p) => [pageRow(p), ...pages.filter((v) => v.variantOf === p.id).map((v) => (
+        <div key={v.id} className={'page-row variant' + (v.id === pageId ? ' on' : '')} onClick={() => openPage(v.id)}>
+          <span className="ab-dot">B</span><span className="pname">{v.name}</span>
+          <span className="pslug">{p.abTest?.status === 'running' ? 'running' : p.abTest?.status}</span>
+        </div>
+      ))])}
       <h4 className="lp-sub">CMS collection pages</h4>
       {templatePages.map(pageRow)}
       {collections.filter((c) => !templatePages.some((p) => p.collectionId === c.id)).map((c) => (

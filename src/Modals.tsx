@@ -7,7 +7,7 @@ import { CodeEditor, CodeField } from './CodeEditor';
 import { closeModal, getState, toast, useModal, useStore, useTarget } from './store';
 import { api } from './api';
 import {
-  addCollection, addField, addItem, addItems, deleteCollection, deleteItem, openTemplatePage, removeField, setNodeHtml, setSiteCode, updateCollection, updateItem,
+  addCollection, addField, addItem, addItems, deleteCollection, deleteItem, openTemplatePage, removeField, setNodeHtml, setSiteCode, setSiteSettings, updateCollection, updateItem,
 } from './actions';
 import { download, makeZip } from './zip';
 import { pickImage } from './files';
@@ -298,10 +298,19 @@ function CmsModal() {
 }
 
 function SiteSettingsModal() {
-  const code = useStore((s) => s.project.settings?.customCode) || { head: '', body: '' };
+  const settings = useStore((s) => s.project.settings) || {};
+  const code = settings.customCode || { head: '', body: '' };
+  const row = (label: string, el: React.ReactNode) => <div className="f-row wide"><label className="f-label">{label}</label>{el}</div>;
   return (
     <Modal title="Site settings">
       <div className="form-stack">
+        <h4 className="sub-h">General &amp; SEO</h4>
+        {row('Site name', <CommitInput value={settings.siteName} placeholder="Shown when the site is shared" onCommit={(v) => setSiteSettings({ siteName: v })} />)}
+        {row('Language', <CommitInput value={settings.lang} placeholder="en" onCommit={(v) => setSiteSettings({ lang: v.trim() })} />)}
+        {row('Favicon', <CommitInput value={settings.favicon} placeholder="https://…/favicon.png" onCommit={(v) => setSiteSettings({ favicon: v })} />)}
+        {row('Share image', <CommitInput value={settings.ogImage} placeholder="Default social image, 1200×630" onCommit={(v) => setSiteSettings({ ogImage: v })} />)}
+        <label className="check"><input type="checkbox" checked={settings.minify !== false} onChange={(e) => setSiteSettings({ minify: e.target.checked })} /> Minify HTML and CSS when publishing</label>
+        <p className="muted small">Publishing also adds sitemap.xml, robots.txt, canonical and social tags, lazy-loads images below the first, and loads only the fonts you use.</p>
         <h4 className="sub-h">Custom code</h4>
         <p className="muted">Added to every page of the published site. Use it for fonts, analytics, chat widgets or global scripts. Code runs in Preview and on the published site, not in the Designer.</p>
         <CodeField label="Head code" kind="head" value={code.head} onSave={(head) => setSiteCode({ head })} />

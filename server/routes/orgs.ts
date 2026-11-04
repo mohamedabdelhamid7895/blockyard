@@ -4,8 +4,8 @@ import crypto from 'node:crypto';
 import { one, q } from '../db';
 import { env } from '../env';
 import { fail, needOrgRole, requireAuth, type OrgRole } from '../http';
-import { encrypt, newId } from '../security';
-import { AI_MODELS } from '../ai';
+import { newId } from '../security';
+import { aiStatus, PROVIDERS, saveProvider } from '../ai';
 
 export const orgs = Router();
 orgs.use(requireAuth);
@@ -24,7 +24,7 @@ orgs.post('/', async (req, res) => {
 orgs.get('/:orgId', async (req, res) => {
   const { orgId } = req.params;
   const role = await needOrgRole(req.user!.id, orgId);
-  const org = await one('select id, name, personal, ai_model, ai_key_enc is not null as has_ai_key, created_at from orgs where id = $1', [orgId]);
+  const org = await one('select id, name, personal, created_at, smtp_enc is not null as has_smtp from orgs where id = $1', [orgId]);
   const members = await q(
     `select u.id, u.name, u.email, m.role, m.created_at from org_members m join users u on u.id = m.user_id
      where m.org_id = $1 order by m.created_at`, [orgId]);
@@ -38,7 +38,7 @@ orgs.get('/:orgId', async (req, res) => {
     `select (select count(*)::int from projects where org_id = $1) as projects,
             (select count(*)::int from projects where org_id = $1 and live_deployment_id is not null) as published,
             (select count(*)::int from domains d join projects p on p.id = d.project_id where p.org_id = $1) as domains`, [orgId]);
-  res.json({ org, role, members, teams, invites, stats, aiModels: AI_MODELS, publicUrl: env.publicUrl });
+  res.json({ org: { ...org, has_ai_key: undefined }, role, members, teams, invites, stats, ai: await aiStatus(orgId), providers: PROVIDERS, publicUrl: env.publicUrl });
 });
 
 orgs.patch('/:orgId', async (req, res) => {
@@ -57,19 +57,12 @@ orgs.delete('/:orgId', async (req, res) => {
 });
 
 /* ---- Claude ---- */
+/** Adds or updates an AI provider: { provider, apiKey?, model?, baseUrl?, makeActive? }. apiKey null removes the key. */
 orgs.put('/:orgId/ai', async (req, res) => {
   await needOrgRole(req.user!.id, req.params.orgId, 'admin');
-  const { apiKey, model } = req.body || {};
-  if (apiKey === null) await q('update orgs set ai_key_enc = null where id = $1', [req.params.orgId]);
-  else if (typeof apiKey === 'string' && apiKey.trim()) {
-    if (!/^sk-ant-/.test(apiKey.trim())) fail(400, 'That does not look like an Anthropic API key (they start with sk-ant-)');
-    await q('update orgs set ai_key_enc = $1 where id = $2', [encrypt(apiKey.trim()), req.params.orgId]);
-  }
-  if (model) {
-    if (!AI_MODELS.some((m) => m.id === model)) fail(400, 'Unknown model');
-    await q('update orgs set ai_model = $1 where id = $2', [model, req.params.orgId]);
-  }
-  res.json({ ok: true });
+  const { provider = 'anthropic', apiKey, model, baseUrl, makeActive } = req.body || {};
+  await saveProvider(req.params.orgId, provider, { apiKey, model, baseUrl, makeActive });
+  res.json(await aiStatus(req.params.orgId));
 });
 
 /* ---- Members ---- */

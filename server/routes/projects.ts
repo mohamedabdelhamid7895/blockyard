@@ -6,11 +6,13 @@ import { one, q } from '../db';
 import { env } from '../env';
 import { fail, needOrgRole, needProject, requireAuth } from '../http';
 import { newId } from '../security';
-import { exportFiles } from '../../src/codegen';
+import { publishFiles } from '../../src/codegen';
 import { migrate, sanitizeSlug } from '../../src/model';
 import { blankProject, starterProject } from '../../src/templates';
 import type { Project } from '../../src/types';
 import { forgetSite } from '../sites';
+import { aiStatus } from '../ai';
+import { fireEvent } from '../workflows';
 
 export const projects = Router();
 projects.use(requireAuth);
@@ -64,8 +66,9 @@ projects.post('/org/:orgId', async (req, res) => {
 
 projects.get('/:id', async (req, res) => {
   const { project, role } = await needProject(req.user!.id, req.params.id);
-  const org = await one('select name, ai_key_enc is not null as has_ai_key from orgs where id = $1', [project.org_id]);
-  res.json({ ...summary(project), data: project.data, role, orgName: org!.name, hasAiKey: org!.has_ai_key });
+  const org = await one('select name from orgs where id = $1', [project.org_id]);
+  const ai = await aiStatus(project.org_id);
+  res.json({ ...summary(project), data: project.data, role, orgName: org!.name, hasAiKey: ai.enabled, aiProvider: ai.active });
 });
 
 /** Saves the designer's data. `version` must match, so two people can't silently overwrite each other. */
@@ -78,6 +81,11 @@ projects.put('/:id/data', async (req, res) => {
   const row = await one(`update projects set data = $1, version = version + 1, updated_at = now() where id = $2 and version = $3 returning version`,
     [JSON.stringify(data), project.id, baseVersion]);
   if (!row) fail(409, 'This site was changed somewhere else. Reload to get the latest version.');
+  // New CMS items trigger automations.
+  const before = new Set((project.data as Project).collections.flatMap((c) => c.items.map((i) => i.id)));
+  for (const c of data!.collections) for (const item of c.items) if (!before.has(item.id)) {
+    fireEvent(project.org_id, 'cms_item_created', { projectId: project.id, site: project.name, collection: c.name, collectionSlug: c.slug, item: item.data });
+  }
   res.json({ version: row!.version });
 });
 
@@ -135,17 +143,29 @@ projects.get('/:id/deployments', async (req, res) => {
   res.json({ liveId: project.live_deployment_id, deployments: rows, ...siteUrls(project.slug) });
 });
 
+/** The address the site is canonically served at: a verified custom domain, then the subdomain, then the path URL. */
+export async function primaryUrl(projectId: string, slug: string) {
+  const d = await one('select hostname from domains where project_id = $1 and verified_at is not null order by created_at limit 1', [projectId]);
+  const u = siteUrls(slug);
+  return d ? `https://${d.hostname}/` : u.subdomainUrl || u.pathUrl;
+}
+
 /** Builds the site from its current data and makes that build live. */
 export async function publishProject(projectId: string, userId: string, note = '') {
   const project = await one('select * from projects where id = $1', [projectId]);
-  const files = exportFiles(project!.data as Project);
+  const data = project!.data as Project;
+  const { files, experiments } = publishFiles(data, {
+    siteUrl: await primaryUrl(projectId, project!.slug), minify: data.settings?.minify !== false,
+    apiBase: `${env.publicUrl}/api`, projectId,
+  });
   const map = Object.fromEntries(files.map((f) => [f.name, f.content]));
   const size = files.reduce((n, f) => n + Buffer.byteLength(f.content), 0);
   const id = newId();
-  await q('insert into deployments (id, project_id, files, file_count, size_bytes, note, created_by) values ($1, $2, $3, $4, $5, $6, $7)',
-    [id, projectId, JSON.stringify(map), files.length, size, note.slice(0, 200), userId]);
+  await q('insert into deployments (id, project_id, files, file_count, size_bytes, note, created_by, meta) values ($1, $2, $3, $4, $5, $6, $7, $8)',
+    [id, projectId, JSON.stringify(map), files.length, size, note.slice(0, 200), userId || null, JSON.stringify({ experiments })]);
   await q('update projects set live_deployment_id = $1 where id = $2', [id, projectId]);
   forgetSite(project!.slug);
+  fireEvent(project!.org_id, 'site_published', { projectId, site: project!.name, url: (await primaryUrl(projectId, project!.slug)), files: files.length, note, publishedAt: new Date().toISOString() });
   return { id, files: files.length, ...siteUrls(project!.slug) };
 }
 

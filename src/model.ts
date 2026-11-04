@@ -121,20 +121,31 @@ export function nodeLabel(n: Node, p?: Project) {
 }
 
 /* ---- Creating elements ---- */
-export function make(p: Project, type: string, spec: Exclude<KidSpec, string> | null = null): Node {
+/**
+ * Creates an element with fresh default classes. Repeated parts of one element (three tab links,
+ * three slides) share a class, as in Webflow, so styling one styles them all.
+ */
+export function make(p: Project, type: string, spec: Exclude<KidSpec, string> | null = null, shared = new Map<string, string>()): Node {
   const def = ELEMENTS[type];
-  const cls = uniqueClassName(p, def.cls || type);
-  const st: ClassStyles = {};
-  if (def.style) st.desktop = { ...def.style };
-  if (def.tablet) st.tablet = { ...def.tablet };
-  if (def.mobile) st.mobile = { ...def.mobile };
-  p.classes[cls] = st;
+  let cls = shared.get(type);
+  if (!cls) {
+    cls = uniqueClassName(p, def.cls || type);
+    const st: ClassStyles = {};
+    if (def.style) st.desktop = { ...def.style };
+    if (def.tablet) st.tablet = { ...def.tablet };
+    if (def.mobile) st.mobile = { ...def.mobile };
+    p.classes[cls] = st;
+    shared.set(type, cls);
+  }
   const node: Node = { id: uid(), type, tag: spec?.tag || def.tag, classes: [cls] };
-  if (def.text != null) node.text = def.text;
+  if (spec?.text != null || def.text != null) node.text = spec?.text ?? def.text;
   if (def.html != null) node.html = def.html;
-  if (def.attrs) node.attrs = { ...def.attrs };
+  if (def.attrs || spec?.attrs) node.attrs = { ...(def.attrs || {}), ...(spec?.attrs || {}) };
+  if (def.options) node.options = [...def.options];
   if (spec?.bind) node.bind = { ...spec.bind };
-  if (def.container) node.children = (def.kids || []).map((k) => (typeof k === 'string' ? make(p, k) : make(p, k.type, k)));
+  if (def.container) {
+    node.children = (spec?.kids || def.kids || []).map((k) => (typeof k === 'string' ? make(p, k, null, shared) : make(p, k.type, k, shared)));
+  }
   if (type === 'collectionlist') node.collectionId = p.collections[0]?.id;
   return node;
 }

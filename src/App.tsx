@@ -2,10 +2,11 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ArrowLeft, Box, ChevronDown, CodeXml, Database, Ellipsis, ExternalLink, Eye, FileText, Keyboard, Layers, LayoutTemplate, Monitor, Plus, Redo2,
-  Rocket, Settings, Smartphone, Sparkles, Tablet, Undo2, X,
+  Rocket, Settings, ShieldCheck, Smartphone, Sparkles, Tablet, Undo2, X,
 } from 'lucide-react';
 import { api } from './api';
 import { AiPanel } from './panels/AiPanel';
+import { AuditPanel } from './panels/AuditPanel';
 import { BP_ORDER, BREAKPOINTS } from './constants';
 import { currentPage, migrate } from './model';
 import { flushSave, getState, openModal, redo, setUI, toast, undo, usePage, useStore, useTarget } from './store';
@@ -28,7 +29,8 @@ const RAIL: { id: LeftPanel; icon: typeof Plus; label: string }[] = [
   { id: 'pages', icon: FileText, label: 'Pages' },
   { id: 'cms', icon: Database, label: 'CMS' },
   { id: 'templates', icon: LayoutTemplate, label: 'Templates' },
-  { id: 'ai', icon: Sparkles, label: 'Claude AI' },
+  { id: 'ai', icon: Sparkles, label: 'AI assistant' },
+  { id: 'audit', icon: ShieldCheck, label: 'Audit: accessibility, SEO, performance' },
 ];
 
 const SAVE_LABEL = { saved: 'Saved', saving: 'Saving…', error: 'Not saved', conflict: 'Changed elsewhere — reload' } as const;
@@ -177,7 +179,7 @@ function LeftRail() {
 function LeftFlyout() {
   const left = useStore((s) => s.ui.left);
   if (!left) return null;
-  const Panel = { add: AddPanel, navigator: NavigatorPanel, components: ComponentsPanel, pages: PagesPanel, cms: CmsPanel, templates: TemplatesPanel, ai: AiPanel }[left];
+  const Panel = { add: AddPanel, navigator: NavigatorPanel, components: ComponentsPanel, pages: PagesPanel, cms: CmsPanel, templates: TemplatesPanel, ai: AiPanel, audit: AuditPanel }[left];
   return <aside className="left panel"><Panel /></aside>;
 }
 

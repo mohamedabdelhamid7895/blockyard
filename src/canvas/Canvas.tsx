@@ -4,9 +4,10 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { BASE_CSS, BREAKPOINTS, GOOGLE_FONTS_URL } from '../constants';
 import { bodyHTML, generateCSS, renderNode } from '../codegen';
 import { animationValue, IX_KEYFRAMES } from '../interactions';
+import { COMPONENT_CSS } from '../widgets';
 import { currentPage, currentRoot, findNode, isContainer, nodeLabel } from '../model';
 import { getState, openModal, toast, useStore } from '../store';
-import { dropIsValid, editComponent, performDrop, select, setNodeText, updateNode, type Drop, type DragSource } from '../actions';
+import { dropIsValid, editComponent, performDrop, select, setNodeHtml, setNodeText, updateNode, type Drop, type DragSource } from '../actions';
 import { onKeyDown } from '../keyboard';
 import { pickImage } from '../files';
 import type { Interaction } from '../types';
@@ -28,6 +29,8 @@ iframe[data-nid] { pointer-events: none; }
 #__lbl.sym { background: #2fbf71; }
 #__drop { background: #146ef5; border-radius: 2px; }
 #__dropbox { border: 2px solid #146ef5; background: rgba(20,110,245,.08); }
+[data-by-skip] { position: static !important; }
+[data-editor-sr] { position: static !important; width: auto !important; height: auto !important; clip: auto !important; overflow: visible !important; white-space: normal !important; outline: 1px dashed #a487f7; opacity: .75; }
 `;
 
 const DESKTOP_MIN = 992;
@@ -37,6 +40,8 @@ const OVERLAYS = ['__hover', '__sel', '__lbl', '__drop', '__dropbox'];
 export const dragState: { current: DragSource | null } = { current: null };
 
 let canvasDoc: Document | null = null;
+
+export const getCanvasDoc = () => canvasDoc;
 
 export function elFor(id: string | null) {
   return canvasDoc && id ? (canvasDoc.querySelector(`[data-nid="${id}"]:not([data-rep])`) as HTMLElement | null) : null;
@@ -100,6 +105,26 @@ export function updateOverlays() {
   } else lbl.style.display = 'none';
 }
 
+/** Keeps rich text to safe formatting tags: no scripts, styles, event handlers or javascript: links. */
+function sanitizeRich(html: string) {
+  const doc = document.implementation.createHTMLDocument('');
+  const box = doc.createElement('div');
+  box.innerHTML = html;
+  const ALLOWED = new Set(['P', 'BR', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'STRONG', 'B', 'EM', 'I', 'U', 'A', 'UL', 'OL', 'LI', 'BLOCKQUOTE', 'CODE', 'PRE', 'IMG', 'FIGURE', 'FIGCAPTION', 'SPAN', 'DIV', 'HR']);
+  const walk = (node: Element) => {
+    for (const child of Array.from(node.children)) {
+      if (!ALLOWED.has(child.tagName)) { child.replaceWith(...Array.from(child.childNodes)); continue; }
+      for (const at of Array.from(child.attributes)) {
+        const keep = ['href', 'src', 'alt', 'title', 'target', 'rel'].includes(at.name) && !/^\s*javascript:/i.test(at.value);
+        if (!keep) child.removeAttribute(at.name);
+      }
+      walk(child);
+    }
+  };
+  walk(box);
+  return box.innerHTML;
+}
+
 let editing: { el: HTMLElement; id: string; original: string; cancel?: boolean } | null = null;
 
 function isHorizontalFlow(el: Element | null) {
@@ -161,7 +186,7 @@ function showDrop(drop: CanvasDrop | null) {
   else Object.assign(s, { left: r.left + 'px', width: r.width + 'px', height: '2px', top: (drop.line!.before ? r.top - 1 : r.bottom - 1) + 'px' });
 }
 
-function startEdit(el: HTMLElement, id: string, original: string) {
+function startEdit(el: HTMLElement, id: string, original: string, rich = false) {
   const doc = canvasDoc!;
   select(id);
   editing = { el, id, original };
@@ -171,7 +196,7 @@ function startEdit(el: HTMLElement, id: string, original: string) {
   doc.getSelection()?.selectAllChildren(el);
   updateOverlays();
   const onKey = (e: KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); el.blur(); }
+    if (e.key === 'Enter' && !e.shiftKey && !rich) { e.preventDefault(); el.blur(); }
     if (e.key === 'Escape') { e.preventDefault(); editing!.cancel = true; el.blur(); }
     e.stopPropagation();
   };
@@ -187,8 +212,13 @@ function startEdit(el: HTMLElement, id: string, original: string) {
     const ed = editing!;
     editing = null;
     el.contentEditable = 'false';
-    const text = el.innerText.replace(/\n$/, '');
-    if (!ed.cancel && text !== ed.original) setNodeText(ed.id, text);
+    if (rich) {
+      const html = sanitizeRich(el.innerHTML);
+      if (!ed.cancel && html !== ed.original) setNodeHtml(ed.id, html);
+    } else {
+      const text = el.innerText.replace(/\n$/, '');
+      if (!ed.cancel && text !== ed.original) setNodeText(ed.id, text);
+    }
     renderCanvas(true); // restores the original text after Esc
   }, { once: true });
 }
@@ -209,6 +239,7 @@ function renderCanvas(force = false) {
   if (!force && key === lastRender) return;
   lastRender = key;
   doc.getElementById('__user')!.textContent = css;
+  applySiteStyles(doc, project.settings?.customCode?.head || '');
   const body = doc.body;
   body.className = page.root.classes.join(' ');
   if (comp) delete body.dataset.nid; else body.dataset.nid = page.root.id;
@@ -222,6 +253,20 @@ function renderCanvas(force = false) {
   }
   applyForcedState();
   updateOverlays();
+}
+
+/** Style and stylesheet tags from the site's head code (imported sites keep their extra CSS there). Scripts never run. */
+let lastSiteHead = '';
+function applySiteStyles(doc: Document, head: string) {
+  if (head === lastSiteHead) return;
+  lastSiteHead = head;
+  doc.querySelectorAll('[data-site-style]').forEach((e) => e.remove());
+  const tmp = doc.createElement('div');
+  tmp.innerHTML = head;
+  tmp.querySelectorAll('style, link[rel=stylesheet]').forEach((el) => {
+    el.setAttribute('data-site-style', '');
+    doc.head.insertBefore(el, doc.getElementById('__user'));
+  });
 }
 
 /** Shows the selected element in the hover/pressed/focused state being styled. */
@@ -259,6 +304,7 @@ function bindEvents(doc: Document, win: Window) {
     if (n.type === 'embed') { select(n.id); openModal('embed', n.id); return; }
     if (n.bind?.text) { toast('This text comes from a CMS field. Edit it in the CMS panel.'); return; }
     if (n.text != null && !el.dataset.rep) { e.preventDefault(); startEdit(el, n.id, n.text); return; }
+    if (n.type === 'richtext' && !el.dataset.rep) { e.preventDefault(); startEdit(el, n.id, n.html || '', true); return; }
     if (n.type === 'image' && !n.bind?.src) {
       select(n.id);
       pickImage().then((src) => src && updateNode((x) => { x.attrs = { ...(x.attrs || {}), src }; }));
@@ -320,10 +366,11 @@ export function Canvas() {
     const frame = frameRef.current!;
     frame.srcdoc = `<!DOCTYPE html><html><head><meta charset="utf-8">
       <link rel="stylesheet" href="${GOOGLE_FONTS_URL}">
-      <style>${BASE_CSS}${IX_KEYFRAMES}${EDITOR_CSS}</style><style id="__user"></style></head><body></body></html>`;
+      <style>${BASE_CSS}${COMPONENT_CSS}${IX_KEYFRAMES}${EDITOR_CSS}</style><style id="__user"></style></head><body></body></html>`;
     const onLoad = () => {
       canvasDoc = frame.contentDocument;
       lastRender = '';
+      lastSiteHead = '';
       bindEvents(canvasDoc!, frame.contentWindow!);
       setReady(true);
     };

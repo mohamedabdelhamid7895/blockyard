@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { ArrowDown, ArrowUp, Box, CodeXml, Copy, CornerLeftUp, Database, Group, Sparkles, Trash2, Unlink } from 'lucide-react';
 import { api } from '../api';
 import { CodeField } from '../CodeEditor';
+import { A11ySection, SeoSection, TypeSettings } from './ElementSettings';
+import { AbTestSection } from './AbTestSection';
 import { ELEMENTS } from '../constants';
 import { bindingCollection, currentPage, currentRoot, findNode, nodeLabel, sanitizeSlug } from '../model';
 import { openModal, toast, useStore, useTarget } from '../store';
@@ -79,6 +81,8 @@ function PageSettings() {
       <Row label="SEO title"><CommitInput value={page.title} placeholder="Shown in the browser tab" onCommit={set('title')} /></Row>
       <Row label="Description"><CommitInput multiline value={page.description} placeholder="Meta description for search engines" onCommit={set('description')} /></Row>
     </Section>
+    {!collection && !page.variantOf && <SeoSection page={page} />}
+    <AbTestSection page={page} />
     <Section title="Page custom code" open>
       <CodeField label="Inside <head> tag" kind="head" value={page.customCode?.head || ''} onSave={(head) => setPageCode(page.id, { head })} />
       <CodeField label="Before </body> tag" kind="body" value={page.customCode?.body || ''} onSave={(body) => setPageCode(page.id, { body })} />
@@ -202,7 +206,10 @@ export function SettingsPanel({ node }: { node: Node }) {
             <AttrInput node={node} label="Source" k="src" ph="https://…" />
             <div className="btn-row"><button className="btn" onClick={() => pickImage().then((src) => src && setAttr('src', src))}>Upload image…</button></div>
           </>}
-          <AttrInput node={node} label="Alt text" k="alt" ph="Describe the image" />
+          {node.attrs?.['data-decorative'] !== 'true' && <AttrInput node={node} label="Alt text" k="alt" ph="Describe the image" />}
+          <Row label=""><label className="check"><input type="checkbox" checked={node.attrs?.['data-decorative'] === 'true'}
+            onChange={(e) => setAttr('data-decorative', e.target.checked ? 'true' : '')} /> Decorative (screen readers skip it)</label></Row>
+          {!node.attrs?.alt && node.attrs?.['data-decorative'] !== 'true' && <div className="warn-hint">Add alt text, or mark the image as decorative.</div>}
         </Section>
       )}
       {node.type === 'video' && (
@@ -221,12 +228,7 @@ export function SettingsPanel({ node }: { node: Node }) {
           <AttrInput node={node} label="Name" k="name" /><AttrInput node={node} label="Placeholder" k="placeholder" /><AttrInput node={node} label="Rows" k="rows" />
         </Section>
       )}
-      {node.type === 'form' && (
-        <Section title="Form" open>
-          <AttrInput node={node} label="Action" k="action" ph="https://formspree.io/f/…" />
-          <Row label="Method"><Select value={node.attrs?.method || 'post'} options={[['post', 'POST'], ['get', 'GET']]} onChange={(v) => setAttr('method', v)} /></Row>
-        </Section>
-      )}
+      <TypeSettings node={node} />
       {node.type === 'embed' && (
         <Section title="Code Embed" open>
           <pre className="code-preview" onClick={() => openModal('embed', node.id)}>{node.html?.slice(0, 400) || 'Empty'}</pre>
@@ -234,6 +236,8 @@ export function SettingsPanel({ node }: { node: Node }) {
           <div className="muted small hint">Double-click the embed on the canvas to edit it. Scripts run in Preview and on the published site, not in the Designer.</div>
         </Section>
       )}
+
+      <A11ySection node={node} />
 
       {!fixed && (
         <Section title="Actions" open>

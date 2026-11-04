@@ -39,8 +39,30 @@ To make the GitHub Pages copy talk to your server, build it with `VITE_API_URL=h
 - **Hosting and domains:** sites are served at `/sites/<site>/`, at `<site>.SITES_DOMAIN`, and on custom domains. Custom domains are verified with a DNS TXT record and pointed with a CNAME.
 - **Saving:** designer changes autosave to the server. Version checks stop two people from silently overwriting each other.
 
+### Forms, automations and A/B testing
+- **Blockyard Forms:** forms with an empty Action send their submissions to Blockyard, with spam protection and rate limiting. You can view and delete them, export a CSV, and set success and error messages.
+- **Automations (like Zapier, built in):** workflows run on these triggers: form submission, new CMS item, site published, incoming webhook, schedule, or manual. Steps are send email (your SMTP), Slack, Discord, HTTP request, add CMS item, publish site, ask AI, filter, format text and wait. Fields take variables such as `{{trigger.fields.email}}` and `{{steps.step_1.text}}`. There are templates, test runs with sample data, and a run history. Outbound requests can't reach private networks.
+- **A/B testing:** in Page settings → A/B test, one click duplicates the page as variant B, optionally with AI-rewritten headings and buttons. Choose a goal (CTA clicks, form submissions, a page visit, or a CSS selector) and the traffic split, then start the test. The server assigns each visitor a side and keeps it, so there's no flicker and test pages are never cached. The dashboard shows visitors, conversions, uplift and statistical confidence, and you can pick a winner.
+
+### Import from other platforms
+- **From a URL:** copies up to 10 linked pages of a live site (Webflow, WordPress, Squarespace, Wix, Framer, Shopify or plain HTML).
+- **From a ZIP:** imports a Webflow export or any static site. Images, fonts and videos are uploaded as cached assets.
+- **How styles come over:** class rules become editable classes with hover states and breakpoints. Other CSS is kept in the site's head code so pages look the same, and the Designer shows it too.
+
+### Performance and SEO
+- **Publishing:** HTML and CSS are minified, only the fonts in use are loaded, the first image loads with high priority and the rest lazy-load, and iframes are lazy. Responses are gzip-compressed and cached, and uploaded assets are cached for a year.
+- **Search and social:** sitemap.xml, robots.txt, canonical links, Open Graph and Twitter cards, and WebSite structured data are generated. Each page has social title, text and image fields, a noindex option, a sitemap exclusion and a search preview. Site settings cover language, favicon, site name and the default share image.
+
+### Accessibility
+- **Elements:** Skip Link, Main Landmark, Screen Reader Text, and an ARIA label, role, described-by, tab order, tooltip and screen-reader hiding on every element. Images can be marked decorative.
+- **Interactive elements:** Navbar, Tabs, Accordion, Dropdown, Slider and Lightbox follow WAI-ARIA patterns, with keyboard support, focus handling and respect for reduced-motion settings.
+- **Accessibility widget:** drag it onto a page to give visitors 12 adjustments (bigger text, contrast, dark mode, grayscale, highlighted links, a readable font, text spacing, stop animations, big cursor, reading guide, hide images, read aloud). Their choices are remembered, and Alt+A opens it.
+- **Audit panel:** checks for missing alt text and labels, empty or vague links, heading order, colour contrast against WCAG AA, landmarks, SEO basics and performance. Clicking an issue selects the element.
+
+### AI
+- **Bring your own model:** Claude (recommended, via the Anthropic SDK) or OpenAI, Google Gemini, Mistral, Groq, OpenRouter, DeepSeek, xAI, Together, Ollama, or any OpenAI-compatible endpoint. Keys are encrypted per workspace.
+
 ### Claude and AI
-- **Bring your own key:** each workspace adds its own Anthropic API key in Workspace settings → Claude & AI and picks a model (Opus 5.5 by default). The key is encrypted and only used on the server.
 - **Generate sections:** describe a section in the AI panel and Claude designs it. The result becomes normal elements and classes, with hover states and all breakpoints.
 - **Rewrite with Claude:** improve, shorten, lengthen, translate or apply any instruction to a text element.
 - **CMS items:** generate realistic items for any collection.
